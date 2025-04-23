@@ -1,0 +1,22 @@
+{
+    "sourceFile": "jsFiles/productSchema.sql",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 1,
+            "patches": [
+                {
+                    "date": 1745185635424,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1745185976643,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,27 +0,0 @@\n-\n--- Products table\n-CREATE TABLE products (\n-  id SERIAL PRIMARY KEY,\n-  name VARCHAR(100) NOT NULL,\n-  price DECIMAL(10,2) CHECK (price > 0),\n-  description TEXT,\n-  category VARCHAR(50),\n-  brand VARCHAR(50),\n-  owner_id INTEGER REFERENCES users(id),\n-  likes INTEGER DEFAULT 0,\n-  created_at TIMESTAMP DEFAULT NOW()\n-);\n-\n--- Product likes tracking\n-CREATE TABLE product_likes (\n-  id SERIAL PRIMARY KEY,\n-  product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,\n-  user_id INTEGER NOT NULL,\n-  username VARCHAR(100) NOT NULL,\n-  liked_at TIMESTAMP DEFAULT NOW(),\n-  UNIQUE (product_id, user_id)\n-);\n-\n--- Create indexes for performance\n-CREATE INDEX idx_products_search ON products USING GIN(to_tsvector('english', name || ' ' || category || ' ' || brand));\n-CREATE INDEX idx_product_likes ON product_likes(product_id, user_id);\n\\ No newline at end of file\n"
+                }
+            ],
+            "date": 1745185635424,
+            "name": "Commit-0",
+            "content": "\n-- Products table\nCREATE TABLE products (\n  id SERIAL PRIMARY KEY,\n  name VARCHAR(100) NOT NULL,\n  price DECIMAL(10,2) CHECK (price > 0),\n  description TEXT,\n  category VARCHAR(50),\n  brand VARCHAR(50),\n  owner_id INTEGER REFERENCES users(id),\n  likes INTEGER DEFAULT 0,\n  created_at TIMESTAMP DEFAULT NOW()\n);\n\n-- Product likes tracking\nCREATE TABLE product_likes (\n  id SERIAL PRIMARY KEY,\n  product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,\n  user_id INTEGER NOT NULL,\n  username VARCHAR(100) NOT NULL,\n  liked_at TIMESTAMP DEFAULT NOW(),\n  UNIQUE (product_id, user_id)\n);\n\n-- Create indexes for performance\nCREATE INDEX idx_products_search ON products USING GIN(to_tsvector('english', name || ' ' || category || ' ' || brand));\nCREATE INDEX idx_product_likes ON product_likes(product_id, user_id);"
+        }
+    ]
+}

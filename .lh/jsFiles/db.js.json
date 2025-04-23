@@ -1,0 +1,50 @@
+{
+    "sourceFile": "jsFiles/db.js",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 8,
+            "patches": [
+                {
+                    "date": 1745175898218,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1745179458402,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -8,7 +8,9 @@\n   password: process.env.DB_PASS || 'your_password',\n   port: process.env.DB_PORT || 5432,\n });\n \n+\n+\n module.exports = {\n   query: (text, params) => pool.query(text, params),\n };\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1745179463945,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -8,9 +8,34 @@\n   password: process.env.DB_PASS || 'your_password',\n   port: process.env.DB_PORT || 5432,\n });\n \n+-- Products table\n+CREATE TABLE products (\n+  id SERIAL PRIMARY KEY,\n+  name VARCHAR(100) NOT NULL,\n+  price DECIMAL(10,2) CHECK (price > 0),\n+  description TEXT,\n+  category VARCHAR(50),\n+  brand VARCHAR(50),\n+  owner_id INTEGER REFERENCES users(id),\n+  likes INTEGER DEFAULT 0,\n+  created_at TIMESTAMP DEFAULT NOW()\n+);\n \n+-- Product likes tracking\n+CREATE TABLE product_likes (\n+  id SERIAL PRIMARY KEY,\n+  product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,\n+  user_id INTEGER NOT NULL,\n+  username VARCHAR(100) NOT NULL,\n+  liked_at TIMESTAMP DEFAULT NOW(),\n+  UNIQUE (product_id, user_id)\n+);\n \n+-- Create indexes for performance\n+CREATE INDEX idx_products_search ON products USING GIN(to_tsvector('english', name || ' ' || category || ' ' || brand));\n+CREATE INDEX idx_product_likes ON product_likes(product_id, user_id);\n+\n module.exports = {\n   query: (text, params) => pool.query(text, params),\n };\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1745179477753,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -8,34 +8,9 @@\n   password: process.env.DB_PASS || 'your_password',\n   port: process.env.DB_PORT || 5432,\n });\n \n--- Products table\n-CREATE TABLE products (\n-  id SERIAL PRIMARY KEY,\n-  name VARCHAR(100) NOT NULL,\n-  price DECIMAL(10,2) CHECK (price > 0),\n-  description TEXT,\n-  category VARCHAR(50),\n-  brand VARCHAR(50),\n-  owner_id INTEGER REFERENCES users(id),\n-  likes INTEGER DEFAULT 0,\n-  created_at TIMESTAMP DEFAULT NOW()\n-);\n \n--- Product likes tracking\n-CREATE TABLE product_likes (\n-  id SERIAL PRIMARY KEY,\n-  product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,\n-  user_id INTEGER NOT NULL,\n-  username VARCHAR(100) NOT NULL,\n-  liked_at TIMESTAMP DEFAULT NOW(),\n-  UNIQUE (product_id, user_id)\n-);\n \n--- Create indexes for performance\n-CREATE INDEX idx_products_search ON products USING GIN(to_tsvector('english', name || ' ' || category || ' ' || brand));\n-CREATE INDEX idx_product_likes ON product_likes(product_id, user_id);\n-\n module.exports = {\n   query: (text, params) => pool.query(text, params),\n };\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1745179594796,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -6,8 +6,9 @@\n   host: process.env.DB_HOST || 'localhost',\n   database: process.env.DB_NAME || 'your_database',\n   password: process.env.DB_PASS || 'your_password',\n   port: process.env.DB_PORT || 5432,\n+  \n });\n \n \n \n"
+                },
+                {
+                    "date": 1745179603166,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -6,8 +6,11 @@\n   host: process.env.DB_HOST || 'localhost',\n   database: process.env.DB_NAME || 'your_database',\n   password: process.env.DB_PASS || 'your_password',\n   port: process.env.DB_PORT || 5432,\n+\n+\n+\n   \n });\n \n \n"
+                },
+                {
+                    "date": 1745179640311,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -9,9 +9,9 @@\n   port: process.env.DB_PORT || 5432,\n \n \n \n-  \n+  sudo\n });\n \n \n \n"
+                },
+                {
+                    "date": 1745180746676,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -6,12 +6,8 @@\n   host: process.env.DB_HOST || 'localhost',\n   database: process.env.DB_NAME || 'your_database',\n   password: process.env.DB_PASS || 'your_password',\n   port: process.env.DB_PORT || 5432,\n-\n-\n-\n-  \n });\n \n \n \n"
+                },
+                {
+                    "date": 1745180782022,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -8,9 +8,9 @@\n   password: process.env.DB_PASS || 'your_password',\n   port: process.env.DB_PORT || 5432,\n });\n \n-const sqlCommands = ''\n+const sqlCommands = \n \n \n \n module.exports = {\n"
+                }
+            ],
+            "date": 1745175898218,
+            "name": "Commit-0",
+            "content": "const { Pool } = require('pg');\nrequire('dotenv').config();\n\nconst pool = new Pool({\n  user: process.env.DB_USER || 'postgres',\n  host: process.env.DB_HOST || 'localhost',\n  database: process.env.DB_NAME || 'your_database',\n  password: process.env.DB_PASS || 'your_password',\n  port: process.env.DB_PORT || 5432,\n});\n\nmodule.exports = {\n  query: (text, params) => pool.query(text, params),\n};"
+        }
+    ]
+}

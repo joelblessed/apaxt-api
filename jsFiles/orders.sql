@@ -1,0 +1,8 @@
+CREATE TABLE orders (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  cart JSONB NOT NULL,
+  shipping JSONB NOT NULL,
+  status TEXT DEFAULT 'Pending',
+  placed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
