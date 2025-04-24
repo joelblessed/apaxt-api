@@ -16,7 +16,7 @@ dotenv.config();
 
 // ////////////////
 // const ordersRoutes = require("./jsFiles/orders");
-// const cartRoutes = require("./jsFiles/cart");
+const cartRoutes = require("./jsFiles/cart");
 // const wishlistRoutes = require("./jsFiles/wishlist");
 const signUpRoutes = require("./jsFiles/signUp");
 const signInRoutes = require("./jsFiles/signIn");
@@ -69,7 +69,7 @@ app.use(cors({
 }))
 
 // app.use("/", ordersRoutes);
-// app.use("/", cartRoutes);
+app.use("/", cartRoutes);
 // app.use("/", wishlistRoutes);
 app.use("/", signUpRoutes);
 app.use("/", signInRoutes);

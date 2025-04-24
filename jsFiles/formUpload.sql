@@ -16,7 +16,7 @@ CREATE TABLE products (
   likes INTEGER DEFAULT 0,
   city VARCHAR(50),
   color VARCHAR(30),
-  weight VARCHAR(20),
+  weight DECIMAL(10,2) NOT NULL,
   owner_id INTEGER NOT NULL,
   location JSONB,
   size VARCHAR(20),
@@ -24,9 +24,9 @@ CREATE TABLE products (
   posted_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- ALTER TABLE users
--- ADD COLUMN  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
--- ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+-- ALTER TABLE products
+
+-- ADD COLUMN lacation JSONB;
 
 -- Product images table
 CREATE TABLE product_images (
