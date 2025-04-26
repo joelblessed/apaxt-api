@@ -7,7 +7,7 @@ CREATE TABLE products (
   price DECIMAL(10,2) NOT NULL CHECK (price > 0),
   quantity INTEGER NOT NULL DEFAULT 1,
   number_in_stock INTEGER NOT NULL,
-  discount DECIMAL(5,2) DEFAULT 0,
+  discount DECIMAL(10,2) DEFAULT 0,
   owner VARCHAR(100) NOT NULL,
   phone_number VARCHAR(20),
   description TEXT,
@@ -24,9 +24,10 @@ CREATE TABLE products (
   posted_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- ALTER TABLE products
+ALTER TABLE products
 
--- ADD COLUMN lacation JSONB;
+
+ADD COLUMN sub_category VARCHAR(50),
 
 -- Product images table
 CREATE TABLE product_images (

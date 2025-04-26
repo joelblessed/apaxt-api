@@ -16,11 +16,11 @@ dotenv.config();
 
 // ////////////////
 // const ordersRoutes = require("./jsFiles/orders");
-const cartRoutes = require("./jsFiles/cart");
+// const cartRoutes = require("./jsFiles/cart");
 // const wishlistRoutes = require("./jsFiles/wishlist");
 const signUpRoutes = require("./jsFiles/signUp");
 const signInRoutes = require("./jsFiles/signIn");
-// const editProfileRoutes = require("./jsFiles/editProfile");
+const editProfileRoutes = require("./jsFiles/editProfile");
 // const editProfilePictureRoutes = require("./jsFiles/editProfilePicture");
 const formUploadRoutes = require("./jsFiles/formUpload");
 const productsRoutes = require("./jsFiles/products");
@@ -69,11 +69,11 @@ app.use(cors({
 }))
 
 // app.use("/", ordersRoutes);
-app.use("/", cartRoutes);
+// app.use("/", cartRoutes);
 // app.use("/", wishlistRoutes);
 app.use("/", signUpRoutes);
 app.use("/", signInRoutes);
-// app.use("/", editProfileRoutes);
+app.use("/", editProfileRoutes);
 // app.use("/", editProfilePictureRoutes);
 app.use("/", formUploadRoutes);
 app.use("/", productsRoutes);

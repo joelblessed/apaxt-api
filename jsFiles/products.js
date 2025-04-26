@@ -10,15 +10,15 @@ const storage = multer.diskStorage({
     cb(null, path.join(__dirname, "../public/images")); // Set upload directory
   },
   filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`); // Set unique file name
+    cb(null, `${file.originalname}`); // Set unique file name
   },
 });
 const upload = multer({ storage });
 
 const app = express();
 
-app.use("/images", express.static(path.join(__dirname, "./public/images"))); // Serve profile images
-app.use("/images", express.static(path.join(__dirname, "../public/images")));
+app.use("./public/images", express.static(path.join(__dirname, "./public/images"))); // Serve profile images
+// app.use("/images", express.static(path.join(__dirname, "../public/images")));
 
 // Get all products (with pagination)
 router.get("/products", async (req, res) => {
@@ -162,7 +162,27 @@ router.put("/uploadProduct/:id", upload.array("images"), async (req, res) => {
     );
 
     // Delete old images
+
+    // if (images.length > 0) {
+    //   // Delete old images from the database
+    //   const oldImages = await query(
+    //     "SELECT image_path FROM product_images WHERE product_id = $1",
+    //     [id]
+    //   );
+
+    //   // Delete old images from the filesystem
+    //   for (const image of oldImages.rows) {
+    //     const filePath = path.join(__dirname, "../public", image.image_path);
+    //     fs.unlink(filePath, (err) => {
+    //       if (err) console.error("Error deleting file:", err);
+    //     });
+    //   }
+    // }
+
+
+    if (images.length > 0) {
     await query("DELETE FROM product_images WHERE product_id = $1", [id]);
+    }
 
     // Insert new images (if any)
     if (images.length > 0) {

@@ -133,62 +133,81 @@ router.get("/profile", authenticateToken, async (req, res) => {
   }
 });
 
-// Update user profile
-router.put("/updateProfile/:id", authenticateToken, async (req, res) => {
+// // Update user profile
+// router.put("/updateProfile/:id", authenticateToken, async (req, res) => {
+//   try {
+//     // Verify user can only update their own profile unless admin
+//     if (req.user.userId !== parseInt(req.params.id) && req.user.role !== 'admin') {
+//       return res.status(403).json({ message: "Unauthorized" });
+//     }
+
+//     const { 
+//       fullName, phoneNumber, address, 
+//       gender, profileImage, country 
+//     } = req.body;
+
+//     const { rows } = await query(
+//       `UPDATE users SET 
+//         full_name = COALESCE($1, full_name),
+//         phone_number = COALESCE($2, phone_number),
+//         address = COALESCE($3, address),
+//         gender = COALESCE($4, gender),
+//         profile_image = COALESCE($5, profile_image),
+//         country = COALESCE($6, country),
+//         updated_at = CURRENT_TIMESTAMP
+//        WHERE id = $7
+//        RETURNING *`,
+//       [
+//         fullName, phoneNumber, address, 
+//         gender, profileImage, country,
+//         req.params.id
+//       ]
+//     );
+
+//     if (rows.length === 0) {
+//       return res.status(404).json({ message: "User not found" });
+//     }
+
+//     const updatedUser = rows[0];
+//     res.json({
+//       id: updatedUser.id,
+//       userName: updatedUser.username,
+//       email: updatedUser.email,
+//       fullName: updatedUser.full_name,
+//       phoneNumber: updatedUser.phone_number,
+//       address: updatedUser.address,
+//       gender: updatedUser.gender,
+//       profileImage: updatedUser.profile_image,
+//       country: updatedUser.country,
+//       wallet: updatedUser.wallet,
+//       referralCode: updatedUser.referral_code,
+//       role: updatedUser.role
+//     });
+//   } catch (error) {
+//     console.error("Update error:", error);
+//     res.status(500).json({ error: "Error updating profile" });
+//   }
+// });
+
+// Get user profile
+router.get("/profile/:id", authenticateToken, async (req, res) => {
   try {
-    // Verify user can only update their own profile unless admin
-    if (req.user.userId !== parseInt(req.params.id) && req.user.role !== 'admin') {
-      return res.status(403).json({ message: "Unauthorized" });
-    }
-
-    const { 
-      fullName, phoneNumber, address, 
-      gender, profileImage, country 
-    } = req.body;
-
     const { rows } = await query(
-      `UPDATE users SET 
-        full_name = COALESCE($1, full_name),
-        phone_number = COALESCE($2, phone_number),
-        address = COALESCE($3, address),
-        gender = COALESCE($4, gender),
-        profile_image = COALESCE($5, profile_image),
-        country = COALESCE($6, country),
-        updated_at = CURRENT_TIMESTAMP
-       WHERE id = $7
-       RETURNING *`,
-      [
-        fullName, phoneNumber, address, 
-        gender, profileImage, country,
-        req.params.id
-      ]
+      `SELECT id, username, email, full_name, phone_number, 
+       address, gender, profile_image, country, wallet, referral_code, role
+       FROM users WHERE id = $1`,
+      [req.user.userId]
     );
 
     if (rows.length === 0) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const updatedUser = rows[0];
-    res.json({
-      id: updatedUser.id,
-      userName: updatedUser.username,
-      email: updatedUser.email,
-      fullName: updatedUser.full_name,
-      phoneNumber: updatedUser.phone_number,
-      address: updatedUser.address,
-      gender: updatedUser.gender,
-      profileImage: updatedUser.profile_image,
-      country: updatedUser.country,
-      wallet: updatedUser.wallet,
-      referralCode: updatedUser.referral_code,
-      role: updatedUser.role
-    });
+    res.json(rows[0]);
   } catch (error) {
-    console.error("Update error:", error);
-    res.status(500).json({ error: "Error updating profile" });
+    console.error("Profile error:", error);
+    res.status(500).json({ error: "Error fetching profile" });
   }
 });
-
-// Additional routes would follow the same pattern...
 
 module.exports = router;

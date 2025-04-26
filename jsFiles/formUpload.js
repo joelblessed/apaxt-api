@@ -32,13 +32,14 @@ router.post("/upload", upload.array("images", 11), async (req, res) => {
         name, brand, category, price, quantity, 
         number_in_stock, discount, owner, phone_number, 
         description, status, address, likes, city, 
-        color, weight, owner_id, location, size, wallet
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20) 
+        color, weight, owner_id, location, size, wallet, sub_category
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) 
       RETURNING id`,
       [
         productData.name || null, // Ensure name is not undefined
         JSON.stringify(productData.brand || {}), // Default to empty object if brand is missing
-        productData.category || null,
+        JSON.stringify(productData.category || {}), // Default to empty object if location is missing
+
         parseFloat(productData.price) || 0, // Default to 0 if price is missing
         parseInt(productData.quantity) || 0, // Default to 0 if quantity is missing
         parseInt(productData.numberInStock) || 0, // Default to 0 if numberInStock is missing
@@ -56,6 +57,8 @@ router.post("/upload", upload.array("images", 11), async (req, res) => {
         JSON.stringify(productData.location || {}), // Default to empty object if location is missing
         productData.size || null , // Handle size if not provided
         productData.wallet || 0, // Handle wallet if not provided
+        JSON.stringify(productData.subcategory || {}), // Default to empty object if location is missing
+
       ]
     );
 
