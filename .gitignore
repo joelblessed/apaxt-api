@@ -10,6 +10,15 @@ node_modules/
 *.log
 logs/
 
+
+# AWS/SDK files
+**/aws-config.json
+**/credentials
+node_modules/aws-sdk/apis/*.examples.json
+
+# Azure tokens
+*.token
+*.tokens
 # Runtime data
 .publish
 .DS_Store
