@@ -62,7 +62,7 @@ router.get("/cart", verifyToken, async (req, res) => {
 // 2. Add to Cart
 router.post("/cart", verifyToken, async (req, res) => {
     try {
-        const { productId, quantity = 1 } = req.body; // Ensure quantity is handled
+        const { productId, quantity } = req.body; // Ensure quantity is handled
         if (!productId) {
             return res.status(400).json({ message: "Product ID is required" });
         }

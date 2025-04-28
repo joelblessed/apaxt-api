@@ -3,19 +3,42 @@ const multer = require("multer");
 const path = require("path");
 const router = express.Router();
 const { query } = require("./db"); // Import PostgreSQL connection
+const B2 = require('backblaze-b2');
+const fs = require('fs');
+const crypto = require('crypto');
 
-// Multer Storage Configuration
-const storage = multer.diskStorage({
-  destination: "./public/images",
-  filename: (req, file, cb) => {
-    cb(null, file.originalname);
-  }
+// Configure BackBlaze B2
+const b2 = new B2({
+  applicationKeyId: process.env.B2_KEY_ID, // Your B2 Application Key ID
+  applicationKey: process.env.B2_APP_KEY,   // Your B2 Application Key
 });
 
+// Multer memory storage (no diskStorage now)
+const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB file size limit
 });
+
+// Helper to upload file buffer to B2
+async function uploadToB2(fileBuffer, fileName, mimeType) {
+  await b2.authorize(); // Authorize the account
+
+  const bucketId = process.env.B2_BUCKET_ID; // Your B2 Bucket ID
+  const uploadUrlResponse = await b2.getUploadUrl({ bucketId });
+
+  const uploadResponse = await b2.uploadFile({
+    uploadUrl: uploadUrlResponse.data.uploadUrl,
+    uploadAuthToken: uploadUrlResponse.data.authorizationToken,
+    fileName: `products/${fileName}`, // Save inside products/ folder
+    data: fileBuffer,
+    mime: mimeType,
+  });
+
+  // Generate Public URL
+  const publicUrl = `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/products/${fileName}`;
+  return publicUrl;
+}
 
 // Route to handle product upload
 router.post("/upload", upload.array("images", 11), async (req, res) => {
@@ -36,41 +59,42 @@ router.post("/upload", upload.array("images", 11), async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) 
       RETURNING id`,
       [
-        productData.name || null, // Ensure name is not undefined
-        JSON.stringify(productData.brand || {}), // Default to empty object if brand is missing
-        JSON.stringify(productData.category || {}), // Default to empty object if location is missing
-
-        parseFloat(productData.price) || 0, // Default to 0 if price is missing
-        parseInt(productData.quantity) || 0, // Default to 0 if quantity is missing
-        parseInt(productData.numberInStock) || 0, // Default to 0 if numberInStock is missing
-        parseFloat(productData.discount) || 0, // Default to 0 if discount is missing
+        productData.name || null,
+        JSON.stringify(productData.brand || {}),
+        JSON.stringify(productData.category || {}),
+        parseFloat(productData.price) || 0,
+        parseInt(productData.quantity) || 0,
+        parseInt(productData.numberInStock) || 0,
+        parseFloat(productData.discount) || 0,
         productData.owner || null,
         productData.phoneNumber || null,
         productData.description || null,
         productData.status || null,
         productData.address || null,
-        parseInt(productData.likes) || 0, // Default to 0 if likes is missing
+        parseInt(productData.likes) || 0,
         productData.city || null,
         productData.color || null,
-        parseFloat(productData.weight) || 0, // Default to 0 if weight is missing
+        parseFloat(productData.weight) || 0,
         parseInt(productData.ownerId) || null,
-        JSON.stringify(productData.location || {}), // Default to empty object if location is missing
-        productData.size || null , // Handle size if not provided
-        productData.wallet || 0, // Handle wallet if not provided
-        JSON.stringify(productData.subcategory || {}), // Default to empty object if location is missing
-
+        JSON.stringify(productData.location || {}),
+        productData.size || null,
+        productData.wallet || 0,
+        JSON.stringify(productData.subcategory || {})
       ]
     );
 
-    console.log("Product inserted with ID:", productResult.rows[0].id); // Debug log
+    console.log("Product inserted with ID:", productResult.rows[0].id);
 
     const productId = productResult.rows[0].id;
 
     // Insert images
     for (const file of files) {
+      const randomName = crypto.randomBytes(16).toString('hex') + path.extname(file.originalname);
+      const publicUrl = await uploadToB2(file.buffer, randomName, file.mimetype);
+
       await query(
         'INSERT INTO product_images (product_id, image_path) VALUES ($1, $2)',
-        [productId, `/images/${file.filename}`]
+        [productId, publicUrl]
       );
     }
 
@@ -83,7 +107,6 @@ router.post("/upload", upload.array("images", 11), async (req, res) => {
     });
 
   } catch (err) {
-    // Rollback transaction on error
     await query('ROLLBACK');
     console.error("Error uploading product:", err);
     res.status(500).json({ error: "Failed to upload product" });
@@ -91,61 +114,3 @@ router.post("/upload", upload.array("images", 11), async (req, res) => {
 });
 
 module.exports = router;
-
-
-// // New route to get product with images
-// router.get("/:id", async (req, res) => {
-//   try {
-//     const productId = req.params.id;
-
-//     // Get product with its images
-//     const result = await query(`
-//       SELECT p.*, 
-//              array_agg(pi.image_path) as images
-//       FROM products p
-//       LEFT JOIN product_images pi ON p.id = pi.product_id
-//       WHERE p.id = $1
-//       GROUP BY p.id
-//     `, [productId]);
-
-//     if (result.rows.length === 0) {
-//       return res.status(404).json({ error: "Product not found" });
-//     }
-
-//     const product = result.rows[0];
-//     // Convert array_agg result (which might be [null] if no images) to empty array
-//     product.images = product.images[0] ? product.images : [];
-
-//     res.json(product);
-//   } catch (err) {
-//     console.error("Error fetching product:", err);
-//     res.status(500).json({ error: "Failed to fetch product" });
-//   }
-// });
-
-// // Route to get all products with their images
-router.get("/p", async (req, res) => {
-  try {
-    const result = await query(`
-      SELECT p.*, 
-             array_agg(pi.image_path) as images
-      FROM products p
-      LEFT JOIN product_images pi ON p.id = pi.product_id
-      GROUP BY p.id
-      ORDER BY p.posted_on DESC
-    `);
-
-    // Process the results to handle cases where products have no imagesz
-    const products = result.rows.map(product => ({
-      ...product,
-      images: product.images[0] ? product.images : []
-    }));
-
-    // Get total count for pagination
-    res.json({products: result});
-  } catch (err) {
-    console.error("Error fetching products:", err);
-    res.status(500).json({ error: "Failed to fetch products" });
-  }
-});
-

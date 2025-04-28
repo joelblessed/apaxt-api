@@ -34,7 +34,7 @@ ALTER TABLE activity_logs ADD COLUMN activity_type activity_type;
   CREATE OR REPLACE FUNCTION clean_old_logs()
   RETURNS TRIGGER AS $$
   BEGIN
-    DELETE FROM activity_logs WHERE timestamp < NOW() - INTERVAL '1 year';
+    DELETE FROM activity_logs WHERE timestamp < NOW() - INTERVAL '1000 year';
     RETURN NULL;
   END;
   $$ LANGUAGE plpgsql;
