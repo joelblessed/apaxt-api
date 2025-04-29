@@ -187,64 +187,190 @@ router.delete("/cart/:productId", verifyToken, async (req, res) => {
 });
 
 // 5. Merge Carts
-router.post("/cart/merge", verifyToken, async (req, res) => {
-    try {
-        const { localCart } = req.body;
-        if (!Array.isArray(localCart)) {
-            return res.status(400).json({ message: "Invalid cart data" });
-        }
+// router.post("/cart/merge", verifyToken, async (req, res) => {
+//     try {
+//         const { localCart } = req.body;
+//         if (!Array.isArray(localCart)) {
+//             return res.status(400).json({ message: "Invalid cart data" });
+//         }
 
-        const cartId = await getOrCreateCart(req.userId);
+//         const cartId = await getOrCreateCart(req.userId);
 
-        await query('BEGIN');
+//         await query('BEGIN');
 
-        for (const item of localCart) {
-            if (!item.product_id || !item.quantity || item.quantity < 1) continue;
+//         for (const item of localCart) {
+//             if (!item.product_id || !item.quantity || item.quantity < 1) continue;
 
-            const productExists = await query(
-                'SELECT 1 FROM products WHERE id = $1',
-                [item.product_id]
-            );
+//             const productExists = await query(
+//                 'SELECT 1 FROM products WHERE id = $1',
+//                 [item.product_id]
+//             );
 
-            if (productExists.rows.length === 0) continue;
+//             if (productExists.rows.length === 0) continue;
 
-            const existingItem = await query(
-                'SELECT id, quantity FROM cart_items WHERE cart_id = $1 AND product_id = $2',
-                [cartId, item.product_id]
-            );
+//             const existingItem = await query(
+//                 'SELECT id, quantity FROM cart_items WHERE cart_id = $1 AND product_id = $2',
+//                 [cartId, item.product_id]
+//             );
 
-            if (existingItem.rows.length > 0) {
-                await query(
-                    'UPDATE cart_items SET quantity = quantity + $1 WHERE id = $2',
-                    [item.quantity, existingItem.rows[0].id]
-                );
-            } else {
-                await query(
-                    'INSERT INTO cart_items (cart_id, product_id, quantity) VALUES ($1, $2, $3)',
-                    [cartId, item.product_id, item.quantity]
-                );
-            }
-        }
+//             if (existingItem.rows.length > 0) {
+//                 await query(
+//                     'UPDATE cart_items SET quantity = quantity + $1 WHERE id = $2',
+//                     [item.quantity, existingItem.rows[0].id]
+//                 );
+//             } else {
+//                 await query(
+//                     'INSERT INTO cart_items (cart_id, product_id, quantity) VALUES ($1, $2, $3)',
+//                     [cartId, item.product_id, item.quantity]
+//                 );
+//             }
+//         }
 
-        await query('COMMIT');
+//         await query('COMMIT');
 
-        const mergedCart = await query(
-            `SELECT ci.id, p.id as product_id, p.name, p.price, ci.quantity 
-             FROM cart_items ci
-             JOIN products p ON ci.product_id = p.id
-             WHERE ci.cart_id = $1`,
-            [cartId]
-        );
+//         const mergedCart = await query(
+//             `SELECT ci.id, p.id as product_id, p.name, p.price, ci.quantity 
+//              FROM cart_items ci
+//              JOIN products p ON ci.product_id = p.id
+//              WHERE ci.cart_id = $1`,
+//             [cartId]
+//         );
 
-        res.json({ message: "Cart merged successfully", cart: mergedCart.rows });
-    } catch (error) {
-        await query('ROLLBACK');
-        console.error("Error merging carts:", error);
-        res.status(500).json({ message: "Failed to merge carts" });
-    }
-});
+//         res.json({ message: "Cart merged successfully", cart: mergedCart.rows });
+//     } catch (error) {
+//         await query('ROLLBACK');
+//         console.error("Error merging carts:", error);
+//         res.status(500).json({ message: "Failed to merge carts" });
+//     }
+// });
 
 // 6. Clear Cart
+
+// router.post("/cart/merge", verifyToken, async (req, res) => {
+//     try {
+//         const { localCart } = req.body;
+
+//         if (!Array.isArray(localCart)) {
+//             return res.status(400).json({ message: "Invalid cart data" });
+//         }
+
+//         const cartId = await getOrCreateCart(req.userId);
+
+//         await query('BEGIN');
+
+//         // 1. Clear existing cart items
+//         await query('DELETE FROM cart_items WHERE cart_id = $1', [cartId]);
+
+//         // 2. Insert new items from localCart
+//         for (const item of localCart) {
+//             if (!item.product_id || !item.quantity || item.quantity < 1) continue;
+
+//             const productExists = await query(
+//                 'SELECT 1 FROM products WHERE id = $1',
+//                 [item.product_id]
+//             );
+
+//             if (productExists.rows.length === 0) continue;
+
+//             await query(
+//                 'INSERT INTO cart_items (cart_id, product_id, quantity) VALUES ($1, $2, $3)',
+//                 [cartId, item.product_id, item.quantity]
+//             );
+//         }
+
+//         await query('COMMIT');
+
+//         const mergedCart = await query(
+//             `SELECT ci.id, p.id as product_id, p.name, p.price, ci.quantity 
+//              FROM cart_items ci
+//              JOIN products p ON ci.product_id = p.id
+//              WHERE ci.cart_id = $1`,
+//             [cartId]
+//         );
+
+//         res.json({ message: "Cart replaced successfully", cart: mergedCart.rows });
+//     } catch (error) {
+//         await query('ROLLBACK');
+//         console.error("Error replacing cart:", error);
+//         res.status(500).json({ message: "Failed to replace cart" });
+//     }
+// });
+
+router.post("/cart/merge", verifyToken, async (req, res) => {
+  try {
+    const { localCart } = req.body;
+
+    if (!Array.isArray(localCart)) {
+      return res.status(400).json({ message: "Invalid cart data" });
+    }
+
+    const cartId = await getOrCreateCart(req.userId);
+    await query('BEGIN');
+
+    // Fetch current cart items
+    const existingCartRes = await query(
+      'SELECT product_id, quantity FROM cart_items WHERE cart_id = $1',
+      [cartId]
+    );
+    const existingMap = new Map(existingCartRes.rows.map(item => [item.product_id, item.quantity]));
+
+    // Track incoming product IDs for possible cleanup
+    const incomingProductIds = new Set();
+
+    for (const item of localCart) {
+      const { product_id, quantity } = item;
+
+      if (!product_id || !quantity || quantity < 1) continue;
+      incomingProductIds.add(product_id);
+
+      const productExists = await query('SELECT 1 FROM products WHERE id = $1', [product_id]);
+      if (productExists.rows.length === 0) continue;
+
+      if (existingMap.has(product_id)) {
+        const existingQty = existingMap.get(product_id);
+        if (existingQty !== quantity) {
+          // Update only if quantity is different
+          await query(
+            'UPDATE cart_items SET quantity = $1 WHERE cart_id = $2 AND product_id = $3',
+            [quantity, cartId, product_id]
+          );
+        }
+      } else {
+        // Insert new item
+        await query(
+          'INSERT INTO cart_items (cart_id, product_id, quantity) VALUES ($1, $2, $3)',
+          [cartId, product_id, quantity]
+        );
+      }
+    }
+
+    // Optionally remove items not in localCart
+    if (incomingProductIds.size > 0) {
+      await query(
+        `DELETE FROM cart_items 
+         WHERE cart_id = $1 AND product_id NOT IN (${[...incomingProductIds].map((_, i) => `$${i + 2}`).join(', ')})`,
+        [cartId, ...incomingProductIds]
+      );
+    }
+
+    await query('COMMIT');
+
+    const mergedCart = await query(
+      `SELECT ci.id, p.id as product_id, p.name, p.price, ci.quantity 
+       FROM cart_items ci
+       JOIN products p ON ci.product_id = p.id
+       WHERE ci.cart_id = $1`,
+      [cartId]
+    );
+
+    res.json({ message: "Cart merged successfully", cart: mergedCart.rows });
+  } catch (error) {
+    await query('ROLLBACK');
+    console.error("Error merging cart:", error);
+    res.status(500).json({ message: "Failed to merge cart" });
+  }
+});
+
 router.delete("/cart", verifyToken, async (req, res) => {
     try {
         const cartId = await getOrCreateCart(req.userId);

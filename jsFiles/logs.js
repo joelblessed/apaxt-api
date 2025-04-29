@@ -12,7 +12,8 @@ function authenticateToken(req, res, next) {
     return res.status(401).json({ error: "Token not provided" });
   }
 
-  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
+  jwt.verify(token, process.env.JWT_SECRET
+    , (err, user) => {
     if (err) {
       console.error("Token verification failed:", err);
       return res.status(403).json({ error: "Invalid token" });
@@ -53,8 +54,7 @@ router.post('/viewedProducts', authenticateToken, async (req, res) => {
   console.log("POST /viewedProducts called");
   const { productId } = req.body;
   const userId = req.user.userId;
-  console.log("Request body:", req.body);
-  console.log("Authenticated user ID:", userId);
+
 
   try {
     // Get the user's most recent activity log
