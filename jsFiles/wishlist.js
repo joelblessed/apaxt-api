@@ -1,32 +1,30 @@
 const express = require("express");
-const { Pool } = require("pg");
+const {query } = require("./db");
 const router = express.Router();
 
-const pool = new Pool({
-  connectionString: process.env.POSTGRES_URL,
-});
+
 router.post("/addToWishlist", async (req, res) => {
   const { productId, userId } = req.body;
 
   if (!productId) return res.status(400).json({ message: "Product ID is required" });
 
   try {
-    let wishlist = await pool.query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
+    let wishlist = await query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
     
     if (wishlist.rowCount === 0) {
-      await pool.query("INSERT INTO wishlists (user_id) VALUES ($1)", [userId]);
-      wishlist = await pool.query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
+      await query("INSERT INTO wishlists (user_id) VALUES ($1)", [userId]);
+      wishlist = await query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
     }
 
     const wishlistId = wishlist.rows[0].id;
 
-    const exists = await pool.query(
+    const exists = await query(
       "SELECT * FROM wishlist_items WHERE wishlist_id = $1 AND product_id = $2",
       [wishlistId, productId]
     );
 
     if (exists.rowCount === 0) {
-      await pool.query(
+      await query(
         "INSERT INTO wishlist_items (wishlist_id, product_id) VALUES ($1, $2)",
         [wishlistId, productId]
       );
@@ -44,10 +42,10 @@ router.post("/removeFromWishlist", async (req, res) => {
   if (!productId) return res.status(400).json({ message: "Product ID is required" });
 
   try {
-    const wishlist = await pool.query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
+    const wishlist = await query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
     if (wishlist.rowCount === 0) return res.json({ message: "Wishlist is empty" });
 
-    await pool.query(
+    await query(
       "DELETE FROM wishlist_items WHERE wishlist_id = $1 AND product_id = $2",
       [wishlist.rows[0].id, productId]
     );
@@ -61,11 +59,11 @@ router.get("/wishlist/:userId", async (req, res) => {
   const { userId } = req.params;
 
   try {
-    const wishlist = await pool.query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
+    const wishlist = await query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
 
     if (wishlist.rowCount === 0) return res.json([]);
 
-    const items = await pool.query(
+    const items = await query(
       "SELECT product_id FROM wishlist_items WHERE wishlist_id = $1",
       [wishlist.rows[0].id]
     );
@@ -81,23 +79,23 @@ router.post("/merge", async (req, res) => {
   if (!userId) return res.status(400).json({ message: "User ID is required" });
 
   try {
-    let wishlist = await pool.query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
+    let wishlist = await query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
 
     if (wishlist.rowCount === 0) {
-      await pool.query("INSERT INTO wishlists (user_id) VALUES ($1)", [userId]);
-      wishlist = await pool.query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
+      await query("INSERT INTO wishlists (user_id) VALUES ($1)", [userId]);
+      wishlist = await query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
     }
 
     const wishlistId = wishlist.rows[0].id;
 
     for (const productId of guestProductIds || []) {
-      const exists = await pool.query(
+      const exists = await query(
         "SELECT * FROM wishlist_items WHERE wishlist_id = $1 AND product_id = $2",
         [wishlistId, productId]
       );
 
       if (exists.rowCount === 0) {
-        await pool.query(
+        await query(
           "INSERT INTO wishlist_items (wishlist_id, product_id) VALUES ($1, $2)",
           [wishlistId, productId]
         );
@@ -109,3 +107,6 @@ router.post("/merge", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+
+module.exports = router;

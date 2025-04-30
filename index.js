@@ -22,7 +22,7 @@ const { authorize} = require("./jsFiles/b2");
 // ////////////////
 // const ordersRoutes = require("./jsFiles/orders");
 const cartRoutes = require("./jsFiles/cart");
-// const wishlistRoutes = require("./jsFiles/wishlist");
+const wishlistRoutes = require("./jsFiles/wishlist");
 const signUpRoutes = require("./jsFiles/signUp");
 const signInRoutes = require("./jsFiles/signIn");
 const editProfileRoutes = require("./jsFiles/editProfile");
@@ -75,7 +75,7 @@ app.use(cors({
 
 // app.use("/", ordersRoutes);
 app.use("/", cartRoutes);
-// app.use("/", wishlistRoutes);
+app.use("/", wishlistRoutes);
 app.use("/", signUpRoutes);
 app.use("/", signInRoutes);
 app.use("/", editProfileRoutes);
