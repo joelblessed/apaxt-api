@@ -8,12 +8,18 @@ CREATE TABLE users (
 -- Wishlist table (one per user)
 CREATE TABLE wishlists (
   id SERIAL PRIMARY KEY,
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  session_id TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id),
+  UNIQUE(session_id)
+
 );
 
 -- Wishlist items table
 CREATE TABLE wishlist_items (
   id SERIAL PRIMARY KEY,
-  wishlist_id INT REFERENCES wishlists(id) ON DELETE CASCADE,
-  product_id UUID NOT NULL
+  wishlist_id INTEGER REFERENCES wishlists(id) ON DELETE CASCADE,
+  product_id INTEGER REFERENCES products(id),
+  UNIQUE(wishlist_id, product_id)
 );

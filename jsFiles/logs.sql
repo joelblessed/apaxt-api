@@ -1,7 +1,7 @@
 -- Activity logs table
 CREATE TABLE IF NOT EXISTS activity_logs (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL,
+    user_id UUID,
     action VARCHAR(100) NOT NULL,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 -- Viewed products table
 CREATE TABLE IF NOT EXISTS viewed_products (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL,
+    user_id UUID,
     product_id INTEGER NOT NULL,
     log_id INTEGER NOT NULL,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

@@ -52,21 +52,23 @@ router.post("/upload", upload.array("images", 11), async (req, res) => {
     // Insert product into database
     const productResult = await query(
       `INSERT INTO products (
-        name, brand, category, price, quantity, 
-        number_in_stock, discount, owner, phone_number, 
+        name, brand, category,sub_category, price, quantity, 
+        number_in_stock, discount, owner,owner_id, phone_number, 
         description, status, address, likes, city, 
-        color, weight, owner_id, location, size, wallet, sub_category
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) 
+        color, weight,  unit_of_weight, size, unit_of_Size, location
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22) 
       RETURNING id`,
       [
         productData.name || null,
         JSON.stringify(productData.brand || {}),
         JSON.stringify(productData.category || {}),
+        JSON.stringify(productData.subcategory || {}),
         parseFloat(productData.price) || 0,
         parseInt(productData.quantity) || 0,
         parseInt(productData.numberInStock) || 0,
         parseFloat(productData.discount) || 0,
         productData.owner || null,
+        productData.ownerId || null,
         productData.phoneNumber || null,
         productData.description || null,
         productData.status || null,
@@ -75,11 +77,11 @@ router.post("/upload", upload.array("images", 11), async (req, res) => {
         productData.city || null,
         productData.color || null,
         parseFloat(productData.weight) || 0,
-        parseInt(productData.ownerId) || null,
+        productData.unit_of_weight || null,
+        parseFloat(productData.size) || 0,
+        productData. unit_of_size|| null,
         JSON.stringify(productData.location || {}),
-        productData.size || null,
-        productData.wallet || 0,
-        JSON.stringify(productData.subcategory || {})
+
       ]
     );
 

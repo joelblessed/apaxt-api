@@ -19,11 +19,12 @@ CREATE TABLE IF NOT EXISTS products (
 -- Cart table
 CREATE TABLE IF NOT EXISTS carts (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (user_id) -- One cart per user
 );
+
 
 -- Cart items table
 CREATE TABLE IF NOT EXISTS cart_items (

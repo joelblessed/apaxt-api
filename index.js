@@ -20,7 +20,7 @@ const { authorize} = require("./jsFiles/b2");
 })();
 
 // ////////////////
-// const ordersRoutes = require("./jsFiles/orders");
+const ordersRoutes = require("./jsFiles/orders");
 const cartRoutes = require("./jsFiles/cart");
 const wishlistRoutes = require("./jsFiles/wishlist");
 const signUpRoutes = require("./jsFiles/signUp");
@@ -73,7 +73,7 @@ app.use(cors({
     allowedHeaders:"Content-Type, Authorization" // Fixed typo: "Athorization" -> "Authorization"
 }))
 
-// app.use("/", ordersRoutes);
+app.use("/", ordersRoutes);
 app.use("/", cartRoutes);
 app.use("/", wishlistRoutes);
 app.use("/", signUpRoutes);

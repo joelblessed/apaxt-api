@@ -4,11 +4,13 @@ CREATE TABLE products (
   name VARCHAR(100) NOT NULL,
   brand JSONB,
   category VARCHAR(50),
+  sub_category VARCHAR(50),
   price DECIMAL(10,2) NOT NULL CHECK (price > 0),
   quantity INTEGER NOT NULL DEFAULT 1,
   number_in_stock INTEGER NOT NULL,
   discount DECIMAL(10,2) DEFAULT 0,
   owner VARCHAR(100) NOT NULL,
+  owner_id  UUID,
   phone_number VARCHAR(20),
   description TEXT,
   status VARCHAR(20) DEFAULT 'available',
@@ -17,17 +19,15 @@ CREATE TABLE products (
   city VARCHAR(50),
   color VARCHAR(30),
   weight DECIMAL(10,2) NOT NULL,
-  owner_id INTEGER NOT NULL,
+  unit_of_Weight TEXT,
+  size DECIMAL(10,2),
+  unit_of_size TEXT,
   location JSONB,
-  size VARCHAR(20),
-   wallet INTEGER DEFAULT 0,
   posted_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 ALTER TABLE products
-
-
-ADD COLUMN sub_category VARCHAR(50),
+ADD COLUMN posted_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 
 -- Product images table
 CREATE TABLE product_images (

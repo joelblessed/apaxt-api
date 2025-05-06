@@ -147,8 +147,10 @@ router.put("/uploadProduct/:id", upload.array("images"), async (req, res) => {
           contentType: file.mimetype,
         });
 
-        const imageUrl = `${process.env.B2_BUCKET_URL}/${fileName}`;
+        const imageUrl = `${process.env.B2_BUCKET_URL}apaxt-images/${fileName}`;
         uploadedImages.push(imageUrl);
+
+      
       }
     }
 

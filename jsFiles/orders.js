@@ -2,7 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
-const pool = require("./db"); // PostgreSQL connection
+const {query} = require("./db"); // PostgreSQL connection
 const router = express.Router();
 
 router.use(cors());
@@ -45,7 +45,7 @@ router.post("/order", async (req, res) => {
       "Pending"
     ];
 
-    const result = await pool.query(query, values);
+    const result = await query(query, values);
     res.status(201).json({ message: "Order placed successfully", order: result.rows[0] });
 
   } catch (err) {
@@ -57,7 +57,7 @@ router.post("/order", async (req, res) => {
 // // 🟡 Get all orders (for testing/admin)
 // router.get("/orders", async (req, res) => {
 //   try {
-//     const result = await pool.query("SELECT * FROM orders ORDER BY placed_at DESC");
+//     const result = await query("SELECT * FROM orders ORDER BY placed_at DESC");
 //     res.json({ orders: result.rows });
 //   } catch (err) {
 //     console.error("Error fetching orders:", err);
@@ -69,7 +69,7 @@ router.post("/order", async (req, res) => {
 // 1. Fetch all orders (admin/testing)
 router.get("/orders", validateToken, async (req, res) => {
     try {
-      const result = await pool.query("SELECT * FROM orders ORDER BY placed_at DESC");
+      const result = await query("SELECT * FROM orders ORDER BY placed_at DESC");
       res.json(result.rows);
     } catch (err) {
       res.status(500).json({ message: "Error fetching orders" });
@@ -80,7 +80,7 @@ router.get("/orders", validateToken, async (req, res) => {
   router.get("/orders/:userId", validateToken, async (req, res) => {
     const { userId } = req.params;
     try {
-      const result = await pool.query(
+      const result = await query(
         "SELECT * FROM orders WHERE user_id = $1 ORDER BY placed_at DESC",
         [userId]
       );
@@ -94,7 +94,7 @@ router.get("/orders", validateToken, async (req, res) => {
   router.patch("/orders/cancel/:orderId", validateToken, async (req, res) => {
     const { orderId } = req.params;
     try {
-      const result = await pool.query(
+      const result = await query(
         "UPDATE orders SET status = $1 WHERE id = $2 RETURNING *",
         ["Canceled", orderId]
       );
@@ -113,13 +113,13 @@ router.get("/orders", validateToken, async (req, res) => {
     const deliveryDate = new Date().toISOString();
   
     try {
-      const getOrder = await pool.query("SELECT shipping FROM orders WHERE id = $1", [orderId]);
+      const getOrder = await query("SELECT shipping FROM orders WHERE id = $1", [orderId]);
       if (getOrder.rowCount === 0) return res.status(404).json({ message: "Order not found" });
   
       const shipping = getOrder.rows[0].shipping;
       shipping.deliveryDate = deliveryDate;
   
-      await pool.query(
+      await query(
         "UPDATE orders SET status = $1, shipping = $2 WHERE id = $3",
         ["Delivered", shipping, orderId]
       );

@@ -55,7 +55,8 @@ router.post("/signup", async (req, res) => {
     email,
     password,
     userName,
-    fullName,
+    firstName,
+    lastName,
     phoneNumber,
     city,
     country,
@@ -91,13 +92,13 @@ router.post("/signup", async (req, res) => {
     // Insert new user
     const { rows } = await query(
       `INSERT INTO users (
-        email, password_hash, username, full_name, phone_number, city, country,
+        email, password_hash, username, first_name,last_name, phone_number, city, country,
         wallet, address, gender, role, date_of_birth, referral_code, referred_by,
         discount, location
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING id, email, username, referral_code`,
       [
-        email, hashedPassword, userName, fullName, phoneNumber, city, country,
+        email, hashedPassword, userName, firstName, lastName, phoneNumber, city, country,
         wallet, address, gender, role, dateOfBirth, newReferralCode, referralCode,
         discount, location
       ]
