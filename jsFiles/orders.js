@@ -8,6 +8,7 @@ const router = express.Router();
 router.use(cors());
 router.use(express.json());
 
+
 // Validate JWT token
 const validateToken = (token) => {
   try {
@@ -18,34 +19,41 @@ const validateToken = (token) => {
   }
 };
 
+const authenticate = (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  const decoded = validateToken(token); // ✅ Correct
+  if (!token || !decoded) {
+    return res.status(401).json({ message: "Unauthorized: Invalid or missing token" });
+  }
+  req.user = decoded;
+  next();
+};
 // 🟢 Place a new order
 router.post("/order", async (req, res) => {
   const { orderData } = req.body;
   const token = req.headers.authorization?.split(" ")[1];
+  const decoded = validateToken(token); // ✅ not authenticate
 
-  const decoded = validateToken(token);
   if (!token || !decoded) {
     return res.status(401).json({ message: "Unauthorized: Invalid or missing token" });
   }
-
-  if (!orderData || !orderData.user || !orderData.cart || !orderData.shipping) {
-    return res.status(400).json({ message: "Missing required fields" });
-  }
-
+  
   try {
-    const query = `
-      INSERT INTO orders (user_id, cart, shipping, status)
-      VALUES ($1, $2, $3, $4)
+    const sql = `
+      INSERT INTO orders (user_id, cart, shipping, status, total_amount , payment_method)
+      VALUES ($1, $2, $3, $4, $5,$6)
       RETURNING *;
     `;
     const values = [
-      orderData.user.id,
+      orderData.user.userId,
       JSON.stringify(orderData.cart),
       JSON.stringify(orderData.shipping),
-      "Pending"
+      orderData.status,
+      orderData.totalAmount ,// Add total_amount value
+      orderData.paymentMethod, // Add payment_method value
     ];
 
-    const result = await query(query, values);
+    const result = await query(sql, values);
     res.status(201).json({ message: "Order placed successfully", order: result.rows[0] });
 
   } catch (err) {
@@ -67,7 +75,7 @@ router.post("/order", async (req, res) => {
 
 
 // 1. Fetch all orders (admin/testing)
-router.get("/orders", validateToken, async (req, res) => {
+router.get("/orders", authenticate, async (req, res) => {
     try {
       const result = await query("SELECT * FROM orders ORDER BY placed_at DESC");
       res.json(result.rows);
@@ -77,7 +85,7 @@ router.get("/orders", validateToken, async (req, res) => {
   });
   
   // 2. Fetch orders by userId
-  router.get("/orders/:userId", validateToken, async (req, res) => {
+  router.get("/orders/:userId", authenticate, async (req, res) => {
     const { userId } = req.params;
     try {
       const result = await query(
@@ -91,7 +99,7 @@ router.get("/orders", validateToken, async (req, res) => {
   });
   
   // 3. Cancel an Order
-  router.patch("/orders/cancel/:orderId", validateToken, async (req, res) => {
+  router.patch("/orders/cancel/:orderId", authenticate, async (req, res) => {
     const { orderId } = req.params;
     try {
       const result = await query(
@@ -108,7 +116,7 @@ router.get("/orders", validateToken, async (req, res) => {
   });
   
   // 4. Mark as Delivered and store delivery date
-  router.patch("/orders/deliver/:orderId", validateToken, async (req, res) => {
+  router.patch("/orders/deliver/:orderId", authenticate, async (req, res) => {
     const { orderId } = req.params;
     const deliveryDate = new Date().toISOString();
   
@@ -121,7 +129,7 @@ router.get("/orders", validateToken, async (req, res) => {
   
       await query(
         "UPDATE orders SET status = $1, shipping = $2 WHERE id = $3",
-        ["Delivered", shipping, orderId]
+        ["Delivered", JSON.stringify(shipping), orderId]
       );
   
       res.json({ message: "Order marked as delivered", deliveryDate });
