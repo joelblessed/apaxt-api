@@ -132,6 +132,9 @@ router.post("/removeFromWishlist", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+
+
 router.get("/wishlist/:userId", async (req, res) => {
   const { userId } = req.params;
 
