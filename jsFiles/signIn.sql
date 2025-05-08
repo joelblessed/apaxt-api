@@ -17,6 +17,10 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+ALTER TABLE users 
+  ALTER COLUMN id SET DEFAULT uuid_generate_v4();
+
 -- Indexes for better performance
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_username ON users(username);
