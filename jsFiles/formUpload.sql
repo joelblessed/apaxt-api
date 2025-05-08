@@ -26,8 +26,7 @@ CREATE TABLE products (
   posted_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-ALTER TABLE products
-ADD COLUMN posted_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
 
 -- Product images table
 CREATE TABLE product_images (
@@ -40,3 +39,8 @@ CREATE TABLE product_images (
 -- Create indexes for better performance
 CREATE INDEX idx_products_owner ON products(owner_id);
 CREATE INDEX idx_product_images ON product_images(product_id);
+
+
+
+ALTER TABLE products
+ADD COLUMN posted_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP

@@ -20,6 +20,10 @@ CREATE TABLE IF NOT EXISTS users (
     has_made_first_purchase BOOLEAN DEFAULT FALSE,
     sign_up_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     location JSONB,
+    email_verified BOOLEAN DEFAULT FALSE,
+    phone_number_verified BOOLEAN DEFAULT FALSE,
+    profile_image TEXT,
+  
     CONSTRAINT valid_discount CHECK (discount >= 0 AND discount <= 100)
 );
 
