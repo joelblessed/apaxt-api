@@ -82,7 +82,8 @@ router.post("/signin", async (req, res) => {
       email: user.email,
       wallet: user.wallet,
       referralCode: user.referral_code,
-      fullName: user.full_name,
+      fistName: user.first_name,
+      lastName: user.last_name,
       phoneNumber: user.phone_number,
       address: user.address,
       gender: user.gender,
@@ -102,7 +103,7 @@ router.post("/signin", async (req, res) => {
 router.get("/profile", authenticateToken, async (req, res) => {
   try {
     const { rows } = await query(
-      `SELECT id, username, email, full_name, phone_number, 
+      `SELECT id, username, email, first_name, last_name, phone_number, 
        address, gender, profile_image, country, wallet, referral_code, role
        FROM users WHERE id = $1`,
       [req.user.userId]
@@ -114,18 +115,7 @@ router.get("/profile", authenticateToken, async (req, res) => {
 
     const user = rows[0];
     res.json({
-      id: user.id,
-      userName: user.username,
-      email: user.email,
-      fullName: user.full_name,
-      phoneNumber: user.phone_number,
-      address: user.address,
-      gender: user.gender,
-      profileImage: user.profile_image,
-      country: user.country,
-      wallet: user.wallet,
-      referralCode: user.referral_code,
-      role: user.role
+     user
     });
   } catch (error) {
     console.error("Profile error:", error);
@@ -193,7 +183,7 @@ router.get("/profile", authenticateToken, async (req, res) => {
 router.get("/profile/:id", authenticateToken, async (req, res) => {
   try {
     const { rows } = await query(
-      `SELECT id, username, email, full_name, phone_number, 
+      `SELECT id, username, email, first_name, last_name, phone_number, 
        address, gender, profile_image, country, wallet, referral_code, role
        FROM users WHERE id = $1`,
       [req.user.userId]

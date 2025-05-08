@@ -29,7 +29,7 @@ const editProfileRoutes = require("./jsFiles/editProfile");
 // const editProfilePictureRoutes = require("./jsFiles/editProfilePicture");
 const formUploadRoutes = require("./jsFiles/formUpload");
 const productsRoutes = require("./jsFiles/products");
-// const passwardResetRoutes = require("./jsFiles/passwardReset");
+const passwardResetRoutes = require("./jsFiles/passwardReset");
 const logsRoutes = require("./jsFiles/logs");
 
 
@@ -82,7 +82,7 @@ app.use("/", editProfileRoutes);
 // app.use("/", editProfilePictureRoutes);
 app.use("/", formUploadRoutes);
 app.use("/", productsRoutes);
-// app.use("/", passwardResetRoutes);
+app.use("/", passwardResetRoutes);
 app.use("/", logsRoutes);
 
 

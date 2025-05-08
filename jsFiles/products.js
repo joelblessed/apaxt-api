@@ -20,7 +20,7 @@ app.use("./public/images", express.static(path.join(__dirname, "./public/images"
 // Get all products (with pagination)
 router.get("/products", async (req, res) => {
   const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 50;
+  const limit = parseInt(req.query.limit) || 10;
   const offset = (page - 1) * limit;
 
   try {
@@ -32,7 +32,8 @@ router.get("/products", async (req, res) => {
       LEFT JOIN product_images pi ON p.id = pi.product_id
       GROUP BY p.id
       ORDER BY p.posted_on DESC
-    `);
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]); // Add LIMIT and OFFSET for pagination
 
     // Get total count for pagination
     const countResult = await query("SELECT COUNT(*) FROM products");
