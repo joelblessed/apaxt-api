@@ -6,6 +6,7 @@ const { query } = require("./db"); // Import PostgreSQL connection
 const B2 = require('backblaze-b2');
 const fs = require('fs');
 const crypto = require('crypto');
+const sharp = require("sharp"); // Add sharp for image processing
 
 // Configure BackBlaze B2
 const b2 = new B2({
@@ -40,6 +41,17 @@ async function uploadToB2(fileBuffer, fileName, mimeType) {
   return publicUrl;
 }
 
+// Helper to generate thumbnail and upload to B2
+async function generateAndUploadThumbnail(fileBuffer, fileName, mimeType) {
+  // const thumbnailBuffer = await sharp(fileBuffer)
+  //   .resize(100, 100, { fit: "cover" }) // Resize to 200x200 pixels
+  //   .toBuffer();
+
+  const thumbnailName = `thumbnails/${fileName}`;
+  const publicUrl = await uploadToB2(fileBuffer, thumbnailName, mimeType);
+  return publicUrl;
+}
+
 // Route to handle product upload
 router.post("/upload", upload.array("images", 11), async (req, res) => {
   try {
@@ -60,9 +72,9 @@ router.post("/upload", upload.array("images", 11), async (req, res) => {
       RETURNING id`,
       [
         productData.name || null,
-        JSON.stringify(productData.brand || {}),
-        JSON.stringify(productData.category || {}),
-        JSON.stringify(productData.subcategory || {}),
+        JSON.stringify(productData.brand ? JSON.parse(productData.brand) :  {}),
+        productData.category || {},
+        productData.subcategory || {},
         parseFloat(productData.price) || 0,
         parseInt(productData.quantity) || 0,
         parseInt(productData.numberInStock) || 0,
@@ -80,23 +92,27 @@ router.post("/upload", upload.array("images", 11), async (req, res) => {
         productData.unit_of_weight || null,
         parseFloat(productData.size) || 0,
         productData. unit_of_size|| null,
-        JSON.stringify(productData.location || {}),
-
+        JSON.stringify(productData.location ? JSON.parse(productData.location) : {}),
       ]
     );
 
-    console.log("Product inserted with ID:", productResult.rows[0].id);
+    if (!productResult.rows || productResult.rows.length === 0) {
+      throw new Error("Failed to insert product into database");
+    }
 
     const productId = productResult.rows[0].id;
 
-    // Insert images
+    // Insert images and thumbnails
     for (const file of files) {
       const randomName = crypto.randomBytes(16).toString('hex') + path.extname(file.originalname);
       const publicUrl = await uploadToB2(file.buffer, randomName, file.mimetype);
 
+      // Generate and upload thumbnail
+      const thumbnailUrl = await generateAndUploadThumbnail(file.buffer, randomName, file.mimetype);
+
       await query(
-        'INSERT INTO product_images (product_id, image_path) VALUES ($1, $2)',
-        [productId, publicUrl]
+        'INSERT INTO product_images (product_id, image_path, thumbnail_path) VALUES ($1, $2, $3)',
+        [productId, publicUrl, thumbnailUrl]
       );
     }
 

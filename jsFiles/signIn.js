@@ -77,19 +77,8 @@ router.post("/signin", async (req, res) => {
     // Return user data (excluding sensitive information)
     const userData = {
       token,
-      role: user.role,
-      userName: user.username,
-      email: user.email,
-      wallet: user.wallet,
-      referralCode: user.referral_code,
-      fistName: user.first_name,
-      lastName: user.last_name,
-      phoneNumber: user.phone_number,
-      address: user.address,
-      gender: user.gender,
-      profileImage: user.profile_image,
-      country: user.country,
-      id: user.id // Ensure ID is included in the response
+      user
+   
     };
 
     res.json(userData);

@@ -3,7 +3,7 @@ const router = express.Router();
 const { query } = require("./db"); // Import the PostgreSQL connection
 const multer = require("multer");
 const path = require("path");
-
+const sharp = require("sharp"); // Add sharp for image processing
 const { b2, authorize, getUploadDetails } = require("./b2");
 const {uploadUrl, uploadAuthToken} = getUploadDetails
 // Use memory storage
@@ -27,12 +27,14 @@ router.get("/products", async (req, res) => {
     // Get products with their images
     const { rows } = await query(`
       SELECT p.*, 
-             array_agg(CONCAT(pi.image_path)) as images             
+             array_agg(CONCAT(pi.image_path)) as images ,
+             array_agg(CONCAT(pi.thumbnail_path)) as thumbnails              
       FROM products p
       LEFT JOIN product_images pi ON p.id = pi.product_id
       GROUP BY p.id
       ORDER BY p.posted_on DESC
       LIMIT $1 OFFSET $2
+
     `, [limit, offset]); // Add LIMIT and OFFSET for pagination
 
     // Get total count for pagination
@@ -79,9 +81,13 @@ router.get("/products/:id", async (req, res) => {
     const { rows } = await query(
       `SELECT p.*, 
               COALESCE(
-                json_agg(CONCAT(pi.image_path)) FILTER (WHERE pi.image_path IS NOT NULL), 
+                json_agg(DISTINCT pi.image_path) FILTER (WHERE pi.image_path IS NOT NULL), 
                 '[]'
-              ) AS images
+              ) AS images,
+              COALESCE(
+                json_agg(DISTINCT pi.thumbnail_path) FILTER (WHERE pi.thumbnail_path IS NOT NULL), 
+                '[]'
+              ) AS thumbnails
        FROM products p
        LEFT JOIN product_images pi ON p.id = pi.product_id
        WHERE p.id = $1
@@ -126,6 +132,7 @@ router.put("/uploadProduct/:id", upload.array("images"), async (req, res) => {
 
   const images = req.files || [];
   let uploadedImages = [];
+  let uploadedThumbnails = []; // Store thumbnail paths
 
   try {
     // If new images are uploaded
@@ -140,7 +147,15 @@ router.put("/uploadProduct/:id", upload.array("images"), async (req, res) => {
 
       for (const file of images) {
         const fileName = `products/${Date.now()}_${file.originalname}`;
-        const uploadResponse = await b2.uploadFile({
+        const thumbnailName = `products/thumbnails/${Date.now()}_${file.originalname}`;
+
+        // Generate thumbnail using sharp
+        const thumbnailBuffer = await sharp(file.buffer)
+          .resize(200, 200) // Resize to 200x200 pixels
+          .toBuffer();
+
+        // Upload original image
+        await b2.uploadFile({
           uploadUrl,
           uploadAuthToken,
           fileName,
@@ -148,10 +163,20 @@ router.put("/uploadProduct/:id", upload.array("images"), async (req, res) => {
           contentType: file.mimetype,
         });
 
-        const imageUrl = `${process.env.B2_BUCKET_URL}apaxt-images/${fileName}`;
-        uploadedImages.push(imageUrl);
+        // Upload thumbnail
+        await b2.uploadFile({
+          uploadUrl,
+          uploadAuthToken,
+          fileName: thumbnailName,
+          data: file.buffer,
+          contentType: file.mimetype,
+        });
 
-      
+        const imageUrl = `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${fileName}`;
+        const thumbnailUrl = `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${thumbnailName}`;
+
+        uploadedImages.push(imageUrl);
+        uploadedThumbnails.push(thumbnailUrl);
       }
     }
 
@@ -176,13 +201,15 @@ router.put("/uploadProduct/:id", upload.array("images"), async (req, res) => {
 
     // Only if new images were uploaded
     if (uploadedImages.length > 0) {
-      // Delete old images from DB
+      // Delete old images and thumbnails from DB
       await query("DELETE FROM product_images WHERE product_id = $1", [id]);
 
-      // Insert new images
-      const imageValues = uploadedImages.map(url => `(${id}, '${url}')`).join(",");
+      // Insert new images and thumbnails
+      const imageValues = uploadedImages
+        .map((url, index) => `(${id}, '${url}', '${uploadedThumbnails[index]}')`)
+        .join(",");
       await query(
-        `INSERT INTO product_images (product_id, image_path) VALUES ${imageValues}`
+        `INSERT INTO product_images (product_id, image_path, thumbnail_path) VALUES ${imageValues}`
       );
     }
 

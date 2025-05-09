@@ -118,7 +118,7 @@ router.put("/profile/update-image/:userId", upload.single("profileImage"), async
       contentType,
     });
 
-    const imageUrl = `${process.env.B2_BUCKET_URL}/${fileName}`; // construct your public URL
+    const imageUrl = `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${fileName}`; // construct your public URL
 
     // Save image URL into PostgreSQL
     const result = await query(
