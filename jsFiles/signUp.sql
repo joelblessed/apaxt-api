@@ -44,7 +44,7 @@ ALTER TABLE Users ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ALTER TABLE users ADD COLUMN verification_token VARCHAR(100);
 CREATE TABLE user_audit_log (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id),
+  user_id   UUID REFERENCES users(id),
   action VARCHAR(50) NOT NULL,
   details JSONB,
   ip_address VARCHAR(45),
@@ -54,8 +54,8 @@ CREATE TABLE user_audit_log (
 
 CREATE TABLE referral_events (
   id SERIAL PRIMARY KEY,
-  referrer_id INTEGER NOT NULL REFERENCES users(id),
-  referred_id INTEGER NOT NULL REFERENCES users(id),
+  referrer_id UUID NOT NULL REFERENCES users(id),
+  referred_id UUID NOT NULL REFERENCES users(id),
   reward_amount DECIMAL(10, 2) NOT NULL,
   event_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

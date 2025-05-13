@@ -49,6 +49,27 @@ const validatePassword = (password) => {
 // Helper function to generate referral code
 const generateReferralCode = () => crypto.randomBytes(4).toString("hex").toUpperCase();
 
+// Endpoint to check referral code validity
+router.get("/check-referral", async (req, res) => {
+  const { code } = req.query;
+
+  if (!code || code.trim() === "") {
+    return res.json({ valid: false });
+  }
+
+  try {
+    const normalizedCode = code.trim().toUpperCase(); // Normalize input
+    const { rows } = await query('SELECT 1 FROM users WHERE UPPER(referral_code) = $1', [normalizedCode]);
+    if (rows.length > 0) {
+      return res.json({ valid: true });
+    }
+    res.json({ valid: false });
+  } catch (error) {
+    console.error("Error checking referral code:", error);
+    res.status(500).json({ error: "Error checking referral code" });
+  }
+});
+
 // Sign Up (Register User)
 router.post("/signup", async (req, res) => {
   const {
@@ -151,7 +172,7 @@ router.post("/apply-reward", verifyToken, async (req, res) => {
       );
 
       if (referrer.rows.length > 0) {
-        const reward = (5 / 100) * amountPaid;
+        const reward = (1/ 100) * amountPaid;
         const referrerData = referrer.rows[0];
 
         // Update referrer's wallet

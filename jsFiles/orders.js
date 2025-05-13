@@ -40,17 +40,18 @@ router.post("/order", async (req, res) => {
   
   try {
     const sql = `
-      INSERT INTO orders (user_id, cart, shipping, status, total_amount , payment_method)
-      VALUES ($1, $2, $3, $4, $5,$6)
+      INSERT INTO orders (user_id, cart, shipping, status, total_amount, payment_method, user_data)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *;
     `;
     const values = [
-      orderData.user.userId,
+      orderData.userId,
       JSON.stringify(orderData.cart),
       JSON.stringify(orderData.shipping),
-      orderData.status,
-      orderData.totalAmount ,// Add total_amount value
-      orderData.paymentMethod, // Add payment_method value
+      orderData.status, // Ensure this matches the database type (e.g., VARCHAR or TEXT)
+      orderData.totalAmount,
+      orderData.paymentMethod,
+      JSON.stringify(orderData.user_data),
     ];
 
     const result = await query(sql, values);

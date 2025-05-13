@@ -127,7 +127,7 @@ router.put("/uploadProduct/:id", upload.array("images"), async (req, res) => {
   const {
     name, category, price, quantity,
     number_in_stock, discount, description, status,
-    address, city, color, weight, posted_on,
+    address, city, color, weight, posted_on, thumbnail_index
   } = productData;
 
   const images = req.files || [];
@@ -188,14 +188,14 @@ router.put("/uploadProduct/:id", upload.array("images"), async (req, res) => {
       `UPDATE products 
        SET name = $1, category = $2, price = $3, quantity = $4, 
            number_in_stock = $5, discount = $6, description = $7, status = $8,
-           address = $9, city = $10, color = $11, weight = $12, posted_on = $13
-       WHERE id = $14
+           address = $9, city = $10, color = $11, weight = $12, posted_on = $13, thumbnail_index = $14
+       WHERE id = $15
        RETURNING *`,
       [
         name, category, price, quantity,
         number_in_stock, discount, description, status,
         address, city, color, weight, posted_on,
-        id,
+        thumbnail_index, id // Corrected order: `thumbnail_index` before `id`
       ]
     );
 
