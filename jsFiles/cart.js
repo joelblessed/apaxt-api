@@ -45,7 +45,7 @@ router.get("/cart", verifyToken, async (req, res) => {
         const cartId = await getOrCreateCart(req.userId);
         
         const cartItems = await query(
-            `SELECT ci.id, p.id as product_id, p.name, p.price, ci.quantity 
+            `SELECT ci.id, p.id as product_id, p.name, p.price - p.discount as price, ci.quantity 
              FROM cart_items ci
              JOIN products p ON ci.product_id = p.id
              WHERE ci.cart_id = $1`,
@@ -345,13 +345,13 @@ router.post("/cart/merge", verifyToken, async (req, res) => {
     }
 
     // Optionally remove items not in localCart
-    if (incomingProductIds.size > 0) {
-      await query(
-        `DELETE FROM cart_items 
-         WHERE cart_id = $1 AND product_id NOT IN (${[...incomingProductIds].map((_, i) => `$${i + 2}`).join(', ')})`,
-        [cartId, ...incomingProductIds]
-      );
-    }
+    // if (incomingProductIds.size > 0) {
+    //   await query(
+    //     `DELETE FROM cart_items 
+    //      WHERE cart_id = $1 AND product_id NOT IN (${[...incomingProductIds].map((_, i) => `$${i + 2}`).join(', ')})`,
+    //     [cartId, ...incomingProductIds]
+    //   );
+    // }
 
     await query('COMMIT');
 
