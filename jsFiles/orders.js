@@ -77,13 +77,21 @@ router.post("/order", async (req, res) => {
 
 // 1. Fetch all orders (admin/testing)
 router.get("/orders", authenticate, async (req, res) => {
-    try {
-      const result = await query("SELECT * FROM orders ORDER BY placed_at DESC");
-      res.json(result.rows);
-    } catch (err) {
-      res.status(500).json({ message: "Error fetching orders" });
-    }
-  });
+  try {
+    const result = await query(`
+      SELECT 
+        orders.*, 
+        users.profile_image
+      FROM orders
+      JOIN users ON orders.user_id = users.id
+      ORDER BY orders.placed_at DESC, users.profile_image
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching orders:", err);
+    res.status(500).json({ message: "Error fetching orders" });
+  }
+});
   
   // 2. Fetch orders by userId
   router.get("/orders/:userId", authenticate, async (req, res) => {
@@ -138,5 +146,28 @@ router.get("/orders", authenticate, async (req, res) => {
       res.status(500).json({ message: "Error updating delivery status" });
     }
   });
+
+  router.patch("/orders/redo/:orderId", authenticate, async (req, res) => {
+    const { orderId } = req.params;
+    const deliveryDate = new Date().toISOString();
+  
+    try {
+      const getOrder = await query("SELECT shipping FROM orders WHERE id = $1", [orderId]);
+      if (getOrder.rowCount === 0) return res.status(404).json({ message: "Order not found" });
+  
+      const shipping = getOrder.rows[0].shipping;
+      shipping.deliveryDate = deliveryDate;
+  
+      await query(
+        "UPDATE orders SET status = $1, shipping = $2 WHERE id = $3",
+        ["Pending", JSON.stringify(shipping), orderId]
+      );
+  
+      res.json({ message: "Order marked as delivered", deliveryDate });
+    } catch (err) {
+      res.status(500).json({ message: "Error updating delivery status" });
+    }
+  });
+  
   
 module.exports = router;
