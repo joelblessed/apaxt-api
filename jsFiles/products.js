@@ -58,7 +58,8 @@ router.get("/allProducts", async (req, res) => {
   try {
     const { rows } = await query(`
       SELECT p.*, 
-             array_agg(CONCAT(pi.image_path)) as images             
+             array_agg(CONCAT(pi.image_path)) as images,
+             array_agg(CONCAT(pi.thumbnail_path)) as thumbnails                
       FROM products p
       LEFT JOIN product_images pi ON p.id = pi.product_id
       GROUP BY p.id
@@ -333,9 +334,8 @@ router.patch("/products/:id/dislike", async (req, res) => {
   }
 });
 
-// Search products
 router.get("/search", async (req, res) => {
-  const searchQuery = req.query.query?.toLowerCase().trim(); // Rename to avoid conflict
+  const searchQuery = req.query.query?.toLowerCase().trim();
   const page = parseInt(req.query.page) || 1;
   const limit = parseInt(req.query.limit) || 10;
   const offset = (page - 1) * limit;
@@ -343,22 +343,29 @@ router.get("/search", async (req, res) => {
   if (!searchQuery) return res.json([]);
 
   try {
-    // Full-text search with pagination
+    const tsQuery = searchQuery.split(" ").join(" | ");
+
+    // Combined: Full-text search + JOIN with images
     const { rows } = await query(
-      `SELECT * FROM products 
-       WHERE to_tsvector('english', name || ' ' || category || ' ' || brand) 
+      `SELECT p.*, 
+              COALESCE(array_agg(DISTINCT pi.image_path) FILTER (WHERE pi.image_path IS NOT NULL), '{}') AS images,
+              COALESCE(array_agg(DISTINCT pi.thumbnail_path) FILTER (WHERE pi.thumbnail_path IS NOT NULL), '{}') AS thumbnails
+       FROM products p
+       LEFT JOIN product_images pi ON p.id = pi.product_id
+       WHERE to_tsvector('english', p.name || ' ' || p.category || ' ' || p.brand) 
        @@ to_tsquery('english', $1)
-       ORDER BY id
+       GROUP BY p.id
+       ORDER BY p.posted_on DESC
        LIMIT $2 OFFSET $3`,
-      [searchQuery.split(" ").join(" | "), limit, offset]
+      [tsQuery, limit, offset]
     );
 
-    // Get total count for pagination
+    // Total count (without join for performance)
     const countResult = await query(
       `SELECT COUNT(*) FROM products 
        WHERE to_tsvector('english', name || ' ' || category || ' ' || brand) 
        @@ to_tsquery('english', $1)`,
-      [searchQuery.split(" ").join(" | ")]
+      [tsQuery]
     );
 
     res.json({
@@ -368,7 +375,7 @@ router.get("/search", async (req, res) => {
       results: rows,
     });
   } catch (err) {
-    console.error(err);
+    console.error("Search error:", err);
     res.status(500).send("Server error");
   }
 });
