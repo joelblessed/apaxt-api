@@ -352,7 +352,7 @@ router.get("/search", async (req, res) => {
               COALESCE(array_agg(DISTINCT pi.thumbnail_path) FILTER (WHERE pi.thumbnail_path IS NOT NULL), '{}') AS thumbnails
        FROM products p
        LEFT JOIN product_images pi ON p.id = pi.product_id
-       WHERE to_tsvector('english', p.name || ' ' || p.category || ' ' || p.brand) 
+       WHERE to_tsvector('english', p.name || ' ' || p.category || ' ' || p.brand || '' ||p.owner) 
        @@ to_tsquery('english', $1)
        GROUP BY p.id
        ORDER BY p.posted_on DESC
