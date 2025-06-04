@@ -278,14 +278,16 @@ router.get("/product/:id", async (req, res) => {
 
 
 //// Get single product by ID all Languages
-router.get("/productPrev/:id", async (req, res) => {
+router.get("/productPrev/:productId/:userId", async (req, res) => {
   try {
+    const { productId, userId } = req.params;
+
     const { rows } = await query(
       `
       SELECT 
         p.*,
 
-        -- Get ALL translations with name + description + language_code
+        -- All translations
         (
           SELECT json_agg(json_build_object(
             'language_code', pt.language_code,
@@ -296,20 +298,23 @@ router.get("/productPrev/:id", async (req, res) => {
           WHERE pt.product_id = p.id
         ) AS translations,
 
-        -- Get seller data
-        json_agg(DISTINCT up.*) FILTER (WHERE up.id IS NOT NULL) AS user_products,
+        -- Filter user_products by owner_id
+        (
+          SELECT json_agg(up)
+          FROM user_products up
+          WHERE up.product_id = p.id AND up.owner_id = $2
+        ) AS user_products,
 
-        -- Get images & thumbnails
+        -- Images
         array_agg(DISTINCT pi.image_path) FILTER (WHERE pi.image_path IS NOT NULL) AS images,
         array_agg(DISTINCT pi.thumbnail_path) FILTER (WHERE pi.thumbnail_path IS NOT NULL) AS thumbnails
 
       FROM products p
-      LEFT JOIN user_products up ON p.id = up.product_id
       LEFT JOIN product_images pi ON p.id = pi.product_id
       WHERE p.id = $1
       GROUP BY p.id
       `,
-      [req.params.id]
+      [productId, userId]
     );
 
     if (rows.length === 0) {
@@ -335,6 +340,8 @@ router.get("/productPrev/:id", async (req, res) => {
     res.status(500).json({ success: false, error: "Server error" });
   }
 });
+
+
 // Create new product with images
 router.post("/products", upload.array("images"), async (req, res) => {
   try {
