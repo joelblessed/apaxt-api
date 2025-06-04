@@ -7,18 +7,21 @@ require("dotenv").config();
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // Middleware: Verify Token
-const verifyToken = (req, res, next) => {
-    const token = req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json({ message: "Unauthorized" });
-
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.userId = decoded.userId;
-        next();
-    } catch (error) {
-        res.status(401).json({ message: "Invalid token" });
-    }
-};
+function verifyToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+  
+    if (!token) return res.sendStatus(401);
+  
+    jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+      if (err) {
+        console.error("JWT Error:", err.message);
+        return res.status(403).json({ message: "Invalid token" });
+      }
+      req.user = user;
+      next();
+    });
+  }
 
 // Helper function to get or create user cart
 const getOrCreateCart = async (userId) => {
@@ -45,11 +48,20 @@ router.get("/cart", verifyToken, async (req, res) => {
         const cartId = await getOrCreateCart(req.userId);
         
         const cartItems = await query(
-            `SELECT ci.id, p.id as product_id, p.name, p.price - p.discount as price, ci.quantity 
+            `SELECT 
+                ci.id, 
+                up.product_id, 
+                ci.product_id,
+                pt.name, 
+                (up.price - up.discount) as price, 
+                ci.quantity,
+                up.owner_id as seller_id,
+                up.number_in_stock
              FROM cart_items ci
-             JOIN products p ON ci.product_id = p.id
+             JOIN user_products up ON ci.product_id = up.product_id AND ci.seller_id = up.owner_id
+             JOIN product_translations pt ON up.product_id = pt.product_id AND pt.language_code = $2
              WHERE ci.cart_id = $1`,
-            [cartId]
+            [cartId, 'en'] // Assuming 'en' as default language, you might want to make this dynamic
         );
         
         res.json({ cart: cartItems.rows });

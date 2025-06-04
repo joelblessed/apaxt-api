@@ -1,164 +1,401 @@
 const express = require("express");
 const router = express.Router();
-const { query } = require("./db"); // Import the PostgreSQL connection
+const { query } = require("./db");
 const multer = require("multer");
 const path = require("path");
-const sharp = require("sharp"); // Add sharp for image processing
+const sharp = require("sharp");
 const { b2, authorize, getUploadDetails } = require("./b2");
-const {uploadUrl, uploadAuthToken} = getUploadDetails
-// Use memory storage
+
+const jwt = require("jsonwebtoken");
+
+
+// Auth middleware
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) return res.sendStatus(401);
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) {
+      console.error("JWT Error:", err.message);
+      return res.status(403).json({ message: "Invalid token" });
+    }
+    req.user = user;
+    next();
+  });
+}
+
+// Configure multer for memory storage
 const storage = multer.memoryStorage();
-const upload = multer({ storage });
-
-
-
-const app = express();
-
-app.use("./public/images", express.static(path.join(__dirname, "./public/images"))); // Serve profile images
-// app.use("/images", express.static(path.join(__dirname, "../public/images")));
-
-// Get all products (with pagination)
-router.get("/products", async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 10;
-  const offset = (page - 1) * limit;
-
-  try {
-    // Get products with their images
-    const { rows } = await query(`
-      SELECT p.*, 
-             array_agg(CONCAT(pi.image_path)) as images ,
-             array_agg(CONCAT(pi.thumbnail_path)) as thumbnails              
-      FROM products p
-      LEFT JOIN product_images pi ON p.id = pi.product_id
-      GROUP BY p.id
-      ORDER BY p.posted_on DESC
-      LIMIT $1 OFFSET $2
-
-    `, [limit, offset]); // Add LIMIT and OFFSET for pagination
-
-    // Get total count for pagination
-    const countResult = await query("SELECT COUNT(*) FROM products");
-    const totalResults = parseInt(countResult.rows[0].count);
-
-    res.json({
-      page,
-      limit,
-      totalResults,
-      products: rows,
-    });
-  } catch (err) {
-    console.error("Error fetching products:", err);
-    res.status(500).json({ error: "Failed to fetch products" });
-  }
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+    files: 10, // Max 10 files
+  },
+  fileFilter: (req, file, cb) => {
+    if (["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(
+        new Error("Invalid file type. Only JPEG, PNG, and WebP are allowed."),
+        false
+      );
+    }
+  },
 });
 
-// Get all products without pagination
+// Helper function for transactions
+async function runTransaction(queries) {
+  await query("BEGIN");
+  try {
+    const results = [];
+    for (const q of queries) {
+      const { text, values } = q;
+      const res = await query(text, values);
+      results.push(res);
+    }
+    await query("COMMIT");
+    return results;
+  } catch (err) {
+    await query("ROLLBACK");
+    throw err;
+  }
+}
+
+// Get all products with translations (no ID needed)
 router.get("/allProducts", async (req, res) => {
   try {
-    const { rows } = await query(`
-      SELECT p.*, 
-             array_agg(CONCAT(pi.image_path)) as images,
-             array_agg(CONCAT(pi.thumbnail_path)) as thumbnails                
+    const language = req.query.lang || "en"; // Default to English
+
+    const { rows } = await query(
+      `
+      SELECT 
+        p.id,
+        p.brand,
+        p.category,
+        p.dimensions,
+        p.attributes,
+        p.created_at,
+        pt.name,
+        pt.description,
+        json_agg(DISTINCT up.*) FILTER (WHERE up.id IS NOT NULL) AS user_products,
+        array_agg(DISTINCT pi.image_path) FILTER (WHERE pi.image_path IS NOT NULL) AS images,
+        array_agg(DISTINCT pi.thumbnail_path) FILTER (WHERE pi.thumbnail_path IS NOT NULL) AS thumbnails
       FROM products p
+      JOIN product_translations pt ON p.id = pt.product_id AND pt.language_code = $1
+      LEFT JOIN user_products up ON p.id = up.product_id
       LEFT JOIN product_images pi ON p.id = pi.product_id
-      GROUP BY p.id
-      ORDER BY p.posted_on DESC
-    `);
+      GROUP BY p.id, pt.name, pt.description
+      ORDER BY p.created_at DESC
+    `,
+      [language]
+    );
 
     res.json({
+      success: true,
       totalResults: rows.length,
-      products: rows,
+      products: rows.map((product) => {
+        const images = [ "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png"] ;
+        const thumbnails = [ "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png" ];
+      
+        (product.images || []).forEach((img) => {
+          if (img.image_path) images.push(img.image_path);
+          if (img.thumbnail_path) thumbnails.push(img.thumbnail_path);
+        });
+      
+        return {
+          ...product,
+          images,
+          thumbnails,
+          // You can optionally still keep a primaryImage if needed:
+          primaryImage: images[0] || null,
+          thumbnail: thumbnails[0] || null,
+          // Optionally remove the raw "images" field:
+          // images: undefined
+        };
+      })
     });
   } catch (err) {
     console.error("Error fetching all products:", err);
-    res.status(500).json({ error: "Failed to fetch all products" });
+    res.status(500).json({
+      success: false,
+      error: "ALiled to fetch products",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
   }
 });
 
-// Get single product by ID
-router.get("/products/:id", async (req, res) => {
+// Get all products with pagination and translations
+router.get("/products", async (req, res) => {
+  try {
+    const language = req.query.lang || "en"; // Default to English
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 10);
+
+    const offset = (page - 1) * limit;
+
+    // Main query with pagination
+    const productsQuery = `
+      SELECT 
+        p.id,
+        p.brand,
+        p.category,
+        p.dimensions,
+        p.attributes,
+        p.created_at,
+        pt.name,
+        pt.description,
+        (
+          SELECT jsonb_agg(jsonb_build_object(
+            'id', up.id,
+            'price', up.price,
+            'discount',up.discount,
+            'status', up.status,
+            'colors', up.colors,
+            'owner', up.owner,
+            'number_in_stock', up.number_in_stock,
+            'phone_number', up.phone_number,
+            'status', up.status,
+            'address',up.address,
+            'city', up.city
+          ))
+          FROM user_products up 
+          WHERE up.product_id = p.id
+        ) AS user_products,
+        (
+          SELECT jsonb_agg(jsonb_build_object(
+            'image_path', pi.image_path,
+            'thumbnail_path', pi.thumbnail_path
+          ))
+          FROM product_images pi
+          WHERE pi.product_id = p.id
+        ) AS imagespath
+      FROM products p
+      JOIN product_translations pt ON p.id = pt.product_id AND pt.language_code = $1
+      ORDER BY p.created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
+
+    // Count query for pagination metadata
+    const countQuery = `
+      SELECT COUNT(*) 
+      FROM products p
+      JOIN product_translations pt ON p.id = pt.product_id AND pt.language_code = $1
+    `;
+
+    const [productsResult, countResult] = await Promise.all([
+      query(productsQuery, [language, limit, offset]),
+      query(countQuery, [language]),
+    ]);
+
+    const totalResults = parseInt(countResult.rows[0].count);
+    const totalPages = Math.ceil(totalResults / limit);
+
+    res.json({
+      success: true,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalResults,
+        resultsPerPage: limit,
+      },
+      products: productsResult.rows.map((product) => {
+        const images = [ "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png"] ;
+        const thumbnails = [ "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png" ];
+      
+        (product.imagespath || []).forEach((img) => {
+          if (img.image_path) images.push(img.image_path);
+          if (img.thumbnail_path) thumbnails.push(img.thumbnail_path);
+        });
+      
+        return {
+          ...product,
+          images,
+          thumbnails,
+          // You can optionally still keep a primaryImage if needed:
+          primaryImage: images[0] || null,
+          thumbnail: thumbnails[0] || null,
+          // Optionally remove the raw "images" field:
+          // images: undefined
+        };
+      })
+    });
+  } catch (err) {
+    console.error("Error fetching products:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch products",
+      ...(process.env.NODE_ENV === "development" && { details: err.message }),
+    });
+  }
+});
+
+// // Get single product by ID
+router.get("/product/:id", async (req, res) => {
+  try {
+    const language = req.query.lang || "en"; // Default to English
+
+    const { rows } = await query(
+      `
+      SELECT 
+        p.*,
+        (SELECT json_agg(t) FROM (
+          SELECT * FROM product_translations pt 
+          WHERE pt.product_id = p.id AND pt.language_code = $2
+        ) t) AS translations,
+        json_agg(DISTINCT up.*) FILTER (WHERE up.id IS NOT NULL) AS user_products,
+        array_agg(DISTINCT pi.image_path) FILTER (WHERE pi.image_path IS NOT NULL) AS images,
+        array_agg(DISTINCT pi.thumbnail_path) FILTER (WHERE pi.thumbnail_path IS NOT NULL) AS thumbnails
+      FROM products p
+      LEFT JOIN user_products up ON p.id = up.product_id
+      LEFT JOIN product_images pi ON p.id = pi.product_id
+      WHERE p.id = $1
+      GROUP BY p.id
+    `,
+      [req.params.id, language]
+    );
+
+    if (rows.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
+    }
+
+    res.json({
+      success: true,
+      product: {
+        ...rows[0],
+        current_translation: rows[0].translations?.[0] || null,
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: "Server error" });
+  }
+});
+
+
+//// Get single product by ID all Languages
+router.get("/productPrev/:id", async (req, res) => {
   try {
     const { rows } = await query(
-      `SELECT p.*, 
-              COALESCE(
-                json_agg(DISTINCT pi.image_path) FILTER (WHERE pi.image_path IS NOT NULL), 
-                '[]'
-              ) AS images,
-              COALESCE(
-                json_agg(DISTINCT pi.thumbnail_path) FILTER (WHERE pi.thumbnail_path IS NOT NULL), 
-                '[]'
-              ) AS thumbnails
-       FROM products p
-       LEFT JOIN product_images pi ON p.id = pi.product_id
-       WHERE p.id = $1
-       GROUP BY p.id`,
+      `
+      SELECT 
+        p.*,
+
+        -- Get ALL translations with name + description + language_code
+        (
+          SELECT json_agg(json_build_object(
+            'language_code', pt.language_code,
+            'name', pt.name,
+            'description', pt.description
+          ))
+          FROM product_translations pt 
+          WHERE pt.product_id = p.id
+        ) AS translations,
+
+        -- Get seller data
+        json_agg(DISTINCT up.*) FILTER (WHERE up.id IS NOT NULL) AS user_products,
+
+        -- Get images & thumbnails
+        array_agg(DISTINCT pi.image_path) FILTER (WHERE pi.image_path IS NOT NULL) AS images,
+        array_agg(DISTINCT pi.thumbnail_path) FILTER (WHERE pi.thumbnail_path IS NOT NULL) AS thumbnails
+
+      FROM products p
+      LEFT JOIN user_products up ON p.id = up.product_id
+      LEFT JOIN product_images pi ON p.id = pi.product_id
+      WHERE p.id = $1
+      GROUP BY p.id
+      `,
       [req.params.id]
     );
 
     if (rows.length === 0) {
-      return res.status(404).json({ message: "Product not found" });
+      return res.status(404).json({ success: false, message: "Product not found" });
     }
-    res.json(rows[0]);
+
+    const product = rows[0];
+    const language = req.query.lang || "en";
+
+    const currentTranslation = product.translations?.find(
+      (t) => t.language_code === language
+    ) || null;
+
+    res.json({
+      success: true,
+      product: {
+        ...product,
+        current_translation: currentTranslation
+      }
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Server error");
+    console.error("Error fetching product:", err);
+    res.status(500).json({ success: false, error: "Server error" });
   }
 });
-
-router.put("/uploadProduct/:id", upload.array("images"), async (req, res) => {
-  const { id } = req.params;
-
-  if (!id || isNaN(parseInt(id, 10))) {
-    return res.status(400).json({ success: false, message: "Invalid product ID" });
-  }
-
-  const productExists = await query("SELECT id FROM products WHERE id = $1", [id]);
-  if (productExists.rows.length === 0) {
-    return res.status(404).json({ success: false, message: "Product not found" });
-  }
-
-  let productData;
+// Create new product with images
+router.post("/products", upload.array("images"), async (req, res) => {
   try {
-    productData = JSON.parse(req.body.product);
-  } catch (err) {
-    return res.status(400).json({ success: false, message: "Invalid product data format" });
-  }
+    const productData = JSON.parse(req.body.product);
+    const {
+      name_en,
+      name_fr, // Required: name_en
+      description_en,
+      description_fr,
+      brand,
+      category,
+      dimensions,
+      attributes,
+      owner,
+      owner_id,
+      price,
+      number_in_stock,
+      discount,
+      phone_number,
+      status,
+      address,
+      city,
+      colors,
+    } = productData;
 
-  const {
-    name, category, price, quantity,
-    number_in_stock, discount, description, status,
-    address, city, color, weight, posted_on, thumbnail_index
-  } = productData;
+    // Validate required fields
+    if (!name_en || !owner_id || !price) {
+      return res.status(400).json({
+        success: false,
+        message: "English name, owner_id, and price are required",
+      });
+    }
 
-  const images = req.files || [];
-  let uploadedImages = [];
-  let uploadedThumbnails = []; // Store thumbnail paths
+    // Process image uploads if they exist
+    let uploadedImages = [];
+    let uploadedThumbnails = [];
+    const images = req.files || [];
 
-  try {
-    // If new images are uploaded
     if (images.length > 0) {
       await authorize();
       const uploadUrlResponse = await b2.getUploadUrl({
         bucketId: process.env.B2_BUCKET_ID,
       });
 
-      const uploadUrl = uploadUrlResponse.data.uploadUrl;
-      const uploadAuthToken = uploadUrlResponse.data.authorizationToken;
+      const { uploadUrl, authorizationToken } = uploadUrlResponse.data;
 
       for (const file of images) {
         const fileName = `products/${Date.now()}_${file.originalname}`;
-        const thumbnailName = `products/thumbnails/${Date.now()}_${file.originalname}`;
+        const thumbnailName = `products/thumbnails/${Date.now()}_${
+          file.originalname
+        }`;
 
-        // Generate thumbnail using sharp
+        // Generate thumbnail
         const thumbnailBuffer = await sharp(file.buffer)
-          .resize(200, 200) // Resize to 200x200 pixels
+          .resize(200, 200)
           .toBuffer();
 
-        // Upload original image
+        // Upload original
         await b2.uploadFile({
           uploadUrl,
-          uploadAuthToken,
+          uploadAuthToken: authorizationToken,
           fileName,
           data: file.buffer,
           contentType: file.mimetype,
@@ -167,216 +404,886 @@ router.put("/uploadProduct/:id", upload.array("images"), async (req, res) => {
         // Upload thumbnail
         await b2.uploadFile({
           uploadUrl,
-          uploadAuthToken,
+          uploadAuthToken: authorizationToken,
           fileName: thumbnailName,
+          data: thumbnailBuffer,
+          contentType: file.mimetype,
+        });
+
+        uploadedImages.push(
+          `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${fileName}`
+        );
+        uploadedThumbnails.push(
+          `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${thumbnailName}`
+        );
+      }
+    }
+
+    // Start transaction
+    const results = await runTransaction([
+      // Insert main product (language-independent data)
+      {
+        text: `
+          INSERT INTO products (brand, category, dimensions, attributes)
+          VALUES ($1, $2, $3, $4)
+          RETURNING id
+        `,
+        values: [
+          JSON.stringify(brand || {}),
+          JSON.stringify(category || {}),
+          JSON.stringify(dimensions || {}),
+          JSON.stringify(attributes || {}),
+        ],
+      },
+      // Insert English translation (required)
+      {
+        text: `
+          INSERT INTO product_translations 
+          (product_id, language_code, name, description)
+          VALUES ($1, 'en', $2, $3)
+        `,
+        values: ["placeholder", name_en, description_en],
+      },
+      // Insert French translation if provided
+      ...(name_fr
+        ? [
+            {
+              text: `
+          INSERT INTO product_translations 
+          (product_id, language_code, name, description)
+          VALUES ($1, 'fr', $2, $3)
+        `,
+              values: ["placeholder", name_fr, description_fr],
+            },
+          ]
+        : []),
+      // Insert user_product relationship
+      {
+        text: `
+          INSERT INTO user_products (
+            product_id, owner, owner_id, price, number_in_stock, 
+            discount, phone_number, status, address, city, colors
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          RETURNING *
+        `,
+        values: [
+          "placeholder",
+          owner,
+          owner_id,
+          parseFloat(price),
+          parseInt(number_in_stock) || 1,
+          parseFloat(discount) || 0,
+          phone_number,
+          status || "available",
+          address,
+          city,
+          colors ? colors.split(",") : [],
+        ],
+      },
+      // Insert images if any
+      ...(uploadedImages.length > 0
+        ? [
+            {
+              text: `
+          INSERT INTO product_images (product_id, image_path, thumbnail_path)
+          VALUES ${uploadedImages
+            .map((_, i) => `('placeholder', $${i * 2 + 1}, $${i * 2 + 2})`)
+            .join(",")}
+        `,
+              values: uploadedImages.flatMap((img, i) => [
+                img,
+                uploadedThumbnails[i],
+              ]),
+            },
+          ]
+        : []),
+    ]);
+
+    // Replace placeholder with actual product_id
+    const productId = results[0].rows[0].id;
+    results[1].values[0] = productId;
+    if (name_fr) results[2].values[0] = productId;
+    results[name_fr ? 3 : 2].values[0] = productId;
+    if (uploadedImages.length > 0) {
+      results[name_fr ? 4 : 3].values = results[name_fr ? 4 : 3].values.map(
+        (v) => (v === "placeholder" ? productId : v)
+      );
+    }
+
+    res.status(201).json({
+      success: true,
+      productId,
+      listing: results[name_fr ? 3 : 2].rows[0],
+      images: uploadedImages,
+    });
+  } catch (err) {
+    console.error("Error creating product:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to create product",
+      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+    });
+  }
+});
+
+// // Update product
+// router.put("/product/:id", upload.array("images"), async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const productData = JSON.parse(req.body.product);
+//     const images = req.files || [];
+//     const language = req.query.lang || "en"; // Default to English
+
+//     // Check product exists
+//     const productExists = await query("SELECT id FROM products WHERE id = $1", [
+//       id,
+//     ]);
+//     if (productExists.rows.length === 0) {
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Product not found" });
+//     }
+
+//     // Process image uploads if any
+//     let uploadedImages = [];
+//     let uploadedThumbnails = [];
+
+//     if (images.length > 0) {
+//       await authorize();
+//       const uploadUrlResponse = await b2.getUploadUrl({
+//         bucketId: process.env.B2_BUCKET_ID,
+//       });
+
+//       const { uploadUrl, authorizationToken } = uploadUrlResponse.data;
+
+//       for (const file of images) {
+//         const fileName = `products/${Date.now()}_${file.originalname}`;
+//         const thumbnailName = `products/thumbnails/${Date.now()}_${
+//           file.originalname
+//         }`;
+
+//         // Generate thumbnail
+//         const thumbnailBuffer = await sharp(file.buffer)
+//           .resize(200, 200)
+//           .toBuffer();
+
+//         // Upload original
+//         await b2.uploadFile({
+//           uploadUrl,
+//           uploadAuthToken: authorizationToken,
+//           fileName,
+//           data: file.buffer,
+//           contentType: file.mimetype,
+//         });
+
+//         // Upload thumbnail
+//         await b2.uploadFile({
+//           uploadUrl,
+//           uploadAuthToken: authorizationToken,
+//           fileName: thumbnailName,
+//           data: thumbnailBuffer,
+//           contentType: file.mimetype,
+//         });
+
+//         uploadedImages.push(
+//           `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${fileName}`
+//         );
+//         uploadedThumbnails.push(
+//           `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${thumbnailName}`
+//         );
+//       }
+//     }
+
+//     // Prepare update queries
+//     const queries = [
+//       // Update product (language-independent data)
+//       {
+//         text: `
+//           UPDATE products 
+//           SET 
+//             brand = COALESCE($1, brand),
+//             category = COALESCE($2, category),
+//             dimensions = COALESCE($3, dimensions),
+//             attributes = COALESCE($4, attributes)
+//           WHERE id = $5
+//           RETURNING *
+//         `,
+//         values: [
+//           productData.brand ? JSON.stringify(productData.brand) : undefined,
+//           productData.category
+//             ? JSON.stringify(productData.category)
+//             : undefined,
+//           productData.dimensions
+//             ? JSON.stringify(productData.dimensions)
+//             : undefined,
+//           productData.attributes
+//             ? JSON.stringify(productData.attributes)
+//             : undefined,
+//           id,
+//         ],
+//       },
+//       // Update or insert English translation
+//       {
+//         text: `
+//           INSERT INTO product_translations (product_id, language_code, name, description)
+//           VALUES ($1, 'en', $2, $3)
+//           ON CONFLICT (product_id, language_code) 
+//           DO UPDATE SET 
+//             name = COALESCE(EXCLUDED.name, product_translations.name),
+//             description = COALESCE(EXCLUDED.description, product_translations.description)
+//         `,
+//         values: [id, productData.name_en, productData.description_en],
+//       },
+//     ];
+
+//     // Add French translation update if provided
+//     if (productData.name_fr) {
+//       queries.push({
+//         text: `
+//           INSERT INTO product_translations (product_id, language_code, name, description)
+//           VALUES ($1, 'fr', $2, $3)
+//           ON CONFLICT (product_id, language_code) 
+//           DO UPDATE SET 
+//             name = COALESCE(EXCLUDED.name, product_translations.name),
+//             description = COALESCE(EXCLUDED.description, product_translations.description)
+//         `,
+//         values: [id, productData.name_fr, productData.description_fr],
+//       });
+//     }
+
+//     // Update user_product
+//     queries.push({
+//       text: `
+//         UPDATE user_products
+//         SET
+//           price = COALESCE($1, price),
+//           number_in_stock = COALESCE($2, number_in_stock),
+//           discount = COALESCE($3, discount),
+//           phone_number = COALESCE($4, phone_number),
+//           status = COALESCE($5, status),
+//           address = COALESCE($6, address),
+//           city = COALESCE($7, city),
+//           colors = COALESCE($8, colors),
+//           owner = COALESCE($9, owner),
+//           owner_id = COALESCE($10, owner_id)
+//         WHERE product_id = $11
+//         RETURNING *
+//       `,
+//       values: [
+//         productData.price,
+//         productData.number_in_stock,
+//         productData.discount,
+//         productData.phone_number,
+//         productData.status,
+//         productData.address,
+//         productData.city,
+//         productData.colors,
+//         productData.owner,
+//         productData.owner_id,
+//         id,
+//       ],
+//     });
+
+//     // If new images, delete old ones and insert new
+//     if (uploadedImages.length > 0) {
+//       queries.push(
+//         {
+//           text: "DELETE FROM product_images WHERE product_id = $1",
+//           values: [id],
+//         },
+//         {
+//           text: `
+//             INSERT INTO product_images (product_id, image_path, thumbnail_path)
+//             VALUES ${uploadedImages
+//               .map((_, i) => `($1, $${i * 2 + 2}, $${i * 2 + 3})`)
+//               .join(",")}
+//           `,
+//           values: [
+//             id,
+//             ...uploadedImages.flatMap((img, i) => [img, uploadedThumbnails[i]]),
+//           ],
+//         }
+//       );
+//     }
+
+//     // Run transaction
+//     const results = await runTransaction(queries);
+
+//     // Get updated product with translations
+//     const productRes = await query(
+//       `
+//       SELECT 
+//         p.*,
+//         (SELECT json_agg(t) FROM (
+//           SELECT * FROM product_translations pt 
+//           WHERE pt.product_id = p.id AND pt.language_code = $2
+//         ) t) AS translations
+//       FROM products p
+//       WHERE p.id = $1
+//     `,
+//       [id, language]
+//     );
+
+//     res.json({
+//       success: true,
+//       product: {
+//         ...productRes.rows[0],
+//         current_translation: productRes.rows[0].translations?.[0] || null,
+//       },
+//       user_product: results[productData.name_fr ? 3 : 2].rows[0],
+//       images: uploadedImages.length > 0 ? uploadedImages : undefined,
+//     });
+//   } catch (err) {
+//     console.error("Error updating product:", err);
+//     res.status(500).json({
+//       success: false,
+//       error: "Failed to update product",
+//       details: err.message,
+//     });
+//   }
+// });
+
+router.put("/adminEdit/:id/:user_id", upload.array("images"), async (req, res) => {
+  try {
+    const { id, user_id } = req.params;
+    const productData = JSON.parse(req.body.product);
+    const images = req.files || [];
+    const language = req.query.lang || "en";
+
+    if (!user_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing user_id parameter.",
+      });
+    }
+
+    // Check if the product belongs to the user
+    const ownershipCheck = await query(
+      `SELECT * FROM user_products WHERE product_id = $1 AND owner_id = $2`,
+      [id, user_id]
+    );
+
+    if (ownershipCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized: You do not own this product.",
+      });
+    }
+
+    // B2 image uploads (same as before)
+    let uploadedImages = [];
+    let uploadedThumbnails = [];
+
+    if (images.length > 0) {
+      await authorize();
+      const uploadUrlResponse = await b2.getUploadUrl({
+        bucketId: process.env.B2_BUCKET_ID,
+      });
+
+      const { uploadUrl, authorizationToken } = uploadUrlResponse.data;
+
+      for (const file of images) {
+        const timestamp = Date.now();
+        const fileName = `products/${timestamp}_${file.originalname}`;
+        const thumbnailName = `products/thumbnails/${timestamp}_${file.originalname}`;
+
+        const thumbnailBuffer = await sharp(file.buffer)
+          .resize(200, 200)
+          .toBuffer();
+
+        await b2.uploadFile({
+          uploadUrl,
+          uploadAuthToken: authorizationToken,
+          fileName,
           data: file.buffer,
           contentType: file.mimetype,
         });
 
-        const imageUrl = `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${fileName}`;
-        const thumbnailUrl = `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${thumbnailName}`;
+        await b2.uploadFile({
+          uploadUrl,
+          uploadAuthToken: authorizationToken,
+          fileName: thumbnailName,
+          data: thumbnailBuffer,
+          contentType: file.mimetype,
+        });
 
-        uploadedImages.push(imageUrl);
-        uploadedThumbnails.push(thumbnailUrl);
+        uploadedImages.push(
+          `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${fileName}`
+        );
+        uploadedThumbnails.push(
+          `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${thumbnailName}`
+        );
       }
     }
 
-    // 🟢 Now begin database transaction
-    await query("BEGIN");
+    // SQL update queries
+    const queries = [
+      {
+        text: `
+          UPDATE products 
+          SET 
+            brand = COALESCE($1, brand),
+            category = COALESCE($2, category),
+            dimensions = COALESCE($3, dimensions),
+            attributes = COALESCE($4, attributes),
+            thumbnail_index = COALESCE($5, thumbnail_index)
+          WHERE id = $6
+        `,
+        values: [
+          productData.brand ? JSON.stringify(productData.brand) : undefined,
+          productData.category ? JSON.stringify(productData.category) : undefined,
+          productData.dimensions ? JSON.stringify(productData.dimensions) : undefined,
+          productData.attributes ? JSON.stringify(productData.attributes) : undefined,
+          productData.thumbnail_index,
+          id,
+        ],
+      },
+      {
+        text: `
+          INSERT INTO product_translations (product_id, language_code, name, description)
+          VALUES ($1, 'en', $2, $3)
+          ON CONFLICT (product_id, language_code) 
+          DO UPDATE SET 
+            name = COALESCE(EXCLUDED.name, product_translations.name),
+            description = COALESCE(EXCLUDED.description, product_translations.description)
+        `,
+        values: [id, productData.name_en, productData.description_en],
+      },
+    ];
 
-    // Always update product fields
-    const { rows } = await query(
-      `UPDATE products 
-       SET name = $1, category = $2, price = $3, quantity = $4, 
-           number_in_stock = $5, discount = $6, description = $7, status = $8,
-           address = $9, city = $10, color = $11, weight = $12, posted_on = $13, thumbnail_index = $14
-       WHERE id = $15
-       RETURNING *`,
-      [
-        name, category, price, quantity,
-        number_in_stock, discount, description, status,
-        address, city, color, weight, posted_on,
-        thumbnail_index, id // Corrected order: `thumbnail_index` before `id`
-      ]
-    );
+    if (productData.name_fr) {
+      queries.push({
+        text: `
+          INSERT INTO product_translations (product_id, language_code, name, description)
+          VALUES ($1, 'fr', $2, $3)
+          ON CONFLICT (product_id, language_code) 
+          DO UPDATE SET 
+            name = COALESCE(EXCLUDED.name, product_translations.name),
+            description = COALESCE(EXCLUDED.description, product_translations.description)
+        `,
+        values: [id, productData.name_fr, productData.description_fr],
+      });
+    }
 
-    // Only if new images were uploaded
+    queries.push({
+      text: `
+        UPDATE user_products
+        SET
+          price = COALESCE($1, price),
+          number_in_stock = COALESCE($2, number_in_stock),
+          discount = COALESCE($3, discount),
+          phone_number = COALESCE($4, phone_number),
+          status = COALESCE($5, status),
+          address = COALESCE($6, address),
+          city = COALESCE($7, city),
+          colors = COALESCE($8, colors),
+          owner = COALESCE($9, owner),
+          owner_id = COALESCE($10,owner_id )
+        WHERE product_id = $11 AND owner_id = $12
+        RETURNING *
+      `,
+      values: [
+        productData.price,
+        productData.number_in_stock,
+        productData.discount,
+        productData.phone_number,
+        productData.status,
+        productData.address,
+        productData.city,
+        productData.colors,
+        productData.owner,
+        productData.owner_id,
+        id,
+        user_id,
+      ],
+    });
+
     if (uploadedImages.length > 0) {
-      // Delete old images and thumbnails from DB
-      await query("DELETE FROM product_images WHERE product_id = $1", [id]);
-
-      // Insert new images and thumbnails
-      const imageValues = uploadedImages
-        .map((url, index) => `(${id}, '${url}', '${uploadedThumbnails[index]}')`)
-        .join(",");
-      await query(
-        `INSERT INTO product_images (product_id, image_path, thumbnail_path) VALUES ${imageValues}`
+      queries.push(
+        {
+          text: "DELETE FROM product_images WHERE product_id = $1",
+          values: [id],
+        },
+        {
+          text: `
+            INSERT INTO product_images (product_id, image_path, thumbnail_path)
+            VALUES ${uploadedImages
+              .map((_, i) => `($1, $${i * 2 + 2}, $${i * 2 + 3})`)
+              .join(",")}
+          `,
+          values: [
+            id,
+            ...uploadedImages.flatMap((img, i) => [img, uploadedThumbnails[i]]),
+          ],
+        }
       );
     }
 
-    await query("COMMIT");
+    const results = await runTransaction(queries);
 
-    res.json({ 
-      success: true, 
-      product: rows[0],
-      message: images.length > 0 ? "Product and images updated" : "Product updated without changing images"
-    });
-
-  } catch (err) {
-    console.error("Error updating product:", err.response?.data || err);
-    await query("ROLLBACK");
-    res.status(500).json({ success: false, message: "Failed to update product" });
-  }
-});
-
-
-// Delete product
-router.delete("/deleteProduct/:id", async (req, res) => {
-  try {
-    await query("DELETE FROM products WHERE id = $1", [req.params.id]);
-    res.json({ message: "Product deleted successfully" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Server error");
-  }
-});
-
-// Like a product
-router.patch("/products/:id/like", async (req, res) => {
-  const { userId, username } = req.body;
-
-  try {
-    // Check if user already liked
-    const checkLike = await query(
-      "SELECT 1 FROM product_likes WHERE product_id = $1 AND user_id = $2",
-      [req.params.id, userId]
+    const productRes = await query(
+      `
+      SELECT 
+        p.*,
+        (SELECT json_agg(t) FROM (
+          SELECT * FROM product_translations pt 
+          WHERE pt.product_id = p.id AND pt.language_code = $2
+        ) t) AS translations
+      FROM products p
+      WHERE p.id = $1
+    `,
+      [id, language]
     );
-
-    if (checkLike.rows.length > 0) {
-      return res.status(400).json({ message: "Already liked" });
-    }
-
-    // Transaction for data consistency
-    await query("BEGIN");
-
-    // Update likes count
-    await query("UPDATE products SET likes = likes + 1 WHERE id = $1", [
-      req.params.id,
-    ]);
-
-    // Record the like
-    await query(
-      "INSERT INTO product_likes (product_id, user_id, username) VALUES ($1, $2, $3)",
-      [req.params.id, userId, username]
-    );
-
-    await query("COMMIT");
-
-    // Get updated like count
-    const { rows } = await query("SELECT likes FROM products WHERE id = $1", [
-      req.params.id,
-    ]);
 
     res.json({
-      message: "Liked",
-      likes: rows[0].likes,
+      success: true,
+      product: {
+        ...productRes.rows[0],
+        current_translation: productRes.rows[0].translations?.[0] || null,
+      },
+      user_product: results[productData.name_fr ? 3 : 2].rows[0],
+      images: uploadedImages.length > 0 ? uploadedImages : undefined,
     });
   } catch (err) {
-    await query("ROLLBACK");
-    console.error(err);
-    res.status(500).send("Server error");
+    console.error("Error updating product:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to update product",
+      details: err.message,
+    });
   }
 });
 
-// Dislike a product
-router.patch("/products/:id/dislike", async (req, res) => {
-  const { userId } = req.body;
+
+// PUT /user-product/:product_id/:owner_id
+router.put("/user-product/:product_id/:owner_id", async (req, res) => {
+  const { product_id, owner_id } = req.params;
+  const {
+    price,
+    number_in_stock,
+    discount,
+    phone_number,
+    status,
+    address,
+    city,
+    colors,
+  } = req.body;
 
   try {
-    // Check if user actually liked
-    const checkLike = await query(
-      "SELECT 1 FROM product_likes WHERE product_id = $1 AND user_id = $2",
-      [req.params.id, userId]
+    // Check ownership
+    const ownershipCheck = await query(
+      `SELECT * FROM user_products WHERE product_id = $1 AND owner_id = $2`,
+      [product_id, owner_id]
     );
 
-    if (checkLike.rows.length === 0) {
-      return res.status(400).json({ message: "Not previously liked" });
+    if (ownershipCheck.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized: You do not own this product.",
+      });
     }
 
-    await query("BEGIN");
-
-    // Update likes count
-    await query("UPDATE products SET likes = likes - 1 WHERE id = $1", [
-      req.params.id,
-    ]);
-
-    // Remove the like record
-    await query(
-      "DELETE FROM product_likes WHERE product_id = $1 AND user_id = $2",
-      [req.params.id, userId]
+    // Perform the update
+    const updateResult = await query(
+      `
+      UPDATE user_products
+      SET
+        price = COALESCE($1, price),
+        number_in_stock = COALESCE($2, number_in_stock),
+        discount = COALESCE($3, discount),
+        phone_number = COALESCE($4, phone_number),
+        status = COALESCE($5, status),
+        address = COALESCE($6, address),
+        city = COALESCE($7, city),
+        colors = COALESCE($8, colors)
+      WHERE product_id = $9 AND owner_id = $10
+      RETURNING *
+    `,
+      [
+        price,
+        number_in_stock,
+        discount,
+        phone_number,
+        status,
+        address,
+        city,
+        colors ? colors : null,
+        product_id,
+        owner_id,
+      ]
     );
 
-    await query("COMMIT");
-
-    // Get updated like count
-    const { rows } = await query("SELECT likes FROM products WHERE id = $1", [
-      req.params.id,
-    ]);
-
     res.json({
-      message: "Disliked",
-      likes: rows[0].likes,
+      success: true,
+      message: "User product updated successfully.",
+      data: updateResult.rows[0],
     });
-  } catch (err) {
-    await query("ROLLBACK");
-    console.error(err);
-    res.status(500).send("Server error");
+  } catch (error) {
+    console.error("Error updating user product:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update user product.",
+      error: error.message,
+    });
   }
 });
 
+
+// Delete a user's reference to a product, and delete the product completely if no other user is referencing it
+router.delete("/delete/:productId/user/:userId", async (req, res) => {
+  const { productId, userId } = req.params;
+
+  try {
+    // Step 1: Delete the user's reference to the product
+    const deleteUserProduct = await query(
+      "DELETE FROM user_products WHERE product_id = $1 AND owner_id = $2",
+      [productId, userId]
+    );
+
+    if (deleteUserProduct.rowCount === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "User-product link not found",
+      });
+    }
+
+    // Step 2: Check if any other user is still referencing the product
+    const checkOtherUsers = await query(
+      "SELECT COUNT(*) FROM user_products WHERE product_id = $1",
+      [productId]
+    );
+
+    const count = parseInt(checkOtherUsers.rows[0].count);
+
+    // Step 3: If no one else references it, delete the product (cascades to translations, etc.)
+    if (count === 0) {
+      await query("DELETE FROM products WHERE id = $1", [productId]);
+    }
+
+    res.json({ success: true, message: "Product deleted successfully" });
+  } catch (err) {
+    console.error("Delete Error:", err);
+    res.status(500).json({ success: false, error: "Server error" });
+  }
+});
+
+// // Like a product
+// router.post("/products/:id/like", async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { userId, username } = req.body;
+
+//     if (!userId || !username) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "userId and username are required",
+//       });
+//     }
+
+//     // Check if already liked
+//     const existingLike = await query(
+//       "SELECT id FROM product_likes WHERE product_id = $1 AND user_id = $2",
+//       [id, userId]
+//     );
+
+//     if (existingLike.rows.length > 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "User already liked this product",
+//       });
+//     }
+
+//     await runTransaction([
+//       {
+//         text: "UPDATE products SET likes = likes + 1 WHERE id = $1",
+//         values: [id],
+//       },
+//       {
+//         text: `
+//           INSERT INTO product_likes (product_id, user_id, username)
+//           VALUES ($1, $2, $3)
+//         `,
+//         values: [id, userId, username],
+//       },
+//     ]);
+
+//     const { rows } = await query("SELECT likes FROM products WHERE id = $1", [
+//       id,
+//     ]);
+
+//     res.json({
+//       success: true,
+//       likes: rows[0].likes,
+//       message: "Product liked successfully",
+//     });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ success: false, error: "Server error" });
+//   }
+// });
+
+// // Unlike a product
+// router.delete("/products/:id/like", async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { userId } = req.body;
+
+//     if (!userId) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "userId is required",
+//       });
+//     }
+
+//     // Check if like exists
+//     const existingLike = await query(
+//       "SELECT id FROM product_likes WHERE product_id = $1 AND user_id = $2",
+//       [id, userId]
+//     );
+
+//     if (existingLike.rows.length === 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "User hasn't liked this product",
+//       });
+//     }
+
+//     await runTransaction([
+//       {
+//         text: "UPDATE products SET likes = GREATEST(likes - 1, 0) WHERE id = $1",
+//         values: [id],
+//       },
+//       {
+//         text: "DELETE FROM product_likes WHERE product_id = $1 AND user_id = $2",
+//         values: [id, userId],
+//       },
+//     ]);
+
+//     const { rows } = await query("SELECT likes FROM products WHERE id = $1", [
+//       id,
+//     ]);
+
+//     res.json({
+//       success: true,
+//       likes: rows[0].likes,
+//       message: "Product unliked successfully",
+//     });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ success: false, error: "Server error" });
+//   }
+// });
+
+// // Search products with translations
 router.get("/search", async (req, res) => {
-  const searchQuery = req.query.query?.toLowerCase().trim();
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 10;
-  const offset = (page - 1) * limit;
-
-  if (!searchQuery) return res.json([]);
-
   try {
-    const tsQuery = searchQuery.split(" ").join(" | ");
+    const searchQuery = req.query.query?.trim();
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 10);
+    const offset = (page - 1) * limit;
+    const language = req.query.lang || 'en';
 
-    // Combined: Full-text search + JOIN with images
-    const { rows } = await query(
-      `SELECT p.*, 
-              COALESCE(array_agg(DISTINCT pi.image_path) FILTER (WHERE pi.image_path IS NOT NULL), '{}') AS images,
-              COALESCE(array_agg(DISTINCT pi.thumbnail_path) FILTER (WHERE pi.thumbnail_path IS NOT NULL), '{}') AS thumbnails
-       FROM products p
-       LEFT JOIN product_images pi ON p.id = pi.product_id
-       WHERE to_tsvector('english', p.name || ' ' || p.category || ' ' || p.brand || '' ||p.owner) 
-       @@ to_tsquery('english', $1)
-       GROUP BY p.id
-       ORDER BY p.posted_on DESC
-       LIMIT $2 OFFSET $3`,
-      [tsQuery, limit, offset]
-    );
+    if (!searchQuery || searchQuery.length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Search query must be at least 2 characters"
+      });
+    }
 
-    // Total count (without join for performance)
-    const countResult = await query(
-      `SELECT COUNT(*) FROM products 
-       WHERE to_tsvector('english', name || ' ' || category || ' ' || brand) 
-       @@ to_tsquery('english', $1)`,
-      [tsQuery]
-    );
+    const { rows } = await query(`
+      SELECT 
+        p.id,
+        p.brand,
+        p.category,
+        p.dimensions,
+        p.attributes,
+        p.created_at,
+        pt.name,
+        pt.description,
+
+        (
+          SELECT jsonb_agg(jsonb_build_object(
+            'id', up.id,
+            'price', up.price,
+            'discount', up.discount,
+            'status', up.status,
+            'colors', up.colors,
+            'owner', up.owner,
+            'number_in_stock', up.number_in_stock,
+            'phone_number', up.phone_number,
+            'address', up.address,
+            'city', up.city
+          ))
+          FROM user_products up
+          WHERE up.product_id = p.id
+        ) AS user_products,
+
+        (
+          SELECT jsonb_agg(jsonb_build_object(
+            'image_path', pi.image_path,
+            'thumbnail_path', pi.thumbnail_path
+          ))
+          FROM product_images pi
+          WHERE pi.product_id = p.id
+        ) AS images,
+
+        COUNT(*) OVER() AS total_count
+
+      FROM products p
+      JOIN product_translations pt ON p.id = pt.product_id
+      LEFT JOIN user_products up ON up.product_id = p.id
+      WHERE pt.language_code = $1
+        AND (
+          pt.name ILIKE '%' || $2 || '%' OR
+          pt.description ILIKE '%' || $2 || '%' OR
+          p.brand->>'name' ILIKE '%' || $2 || '%' OR
+          p.category->>'main' ILIKE '%' || $2 || '%' OR
+          p.category->>'sub' ILIKE '%' || $2 || '%' OR
+          up.owner ILIKE '%' || $2 || '%'
+        )
+      GROUP BY p.id, pt.id
+      ORDER BY p.created_at DESC
+      LIMIT $3 OFFSET $4
+    `, [language, searchQuery, limit, offset]);
+
+    const totalResults = rows[0]?.total_count || 0;
 
     res.json({
+      success: true,
+      query: searchQuery,
       page,
       limit,
-      totalResults: parseInt(countResult.rows[0].count),
-      results: rows,
+      totalPages: Math.ceil(totalResults / limit),
+      totalResults,
+      results: rows.map(({ total_count, ...product }) =>  {
+        const images = ["https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png"] ;
+        const thumbnails = ["https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png"] ;
+      
+        (product.imagespath || []).forEach((img) => {
+          if (img.image_path) images.push(img.image_path);
+          if (img.thumbnail_path) thumbnails.push(img.thumbnail_path);
+        });
+      
+        return {
+          ...product,
+          images,
+          thumbnails,
+          // You can optionally still keep a primaryImage if needed:
+          primaryImage: images[0] || null,
+          thumbnail: thumbnails[0] || null,
+          // Optionally remove the raw "images" field:
+          // images: undefined
+        };
+      })
     });
   } catch (err) {
     console.error("Search error:", err);
-    res.status(500).send("Server error");
+    res.status(500).json({
+      success: false,
+      error: "Search failed",
+      ...(process.env.NODE_ENV === "development" && { details: err.message }),
+    });
   }
 });
 
