@@ -461,7 +461,7 @@ router.post("/products", upload.array("images"), async (req, res) => {
 
         // Generate thumbnail
         const thumbnailBuffer = await sharp(file.buffer)
-          .resize(200, 200)
+          .resize(400, 400)
           .toBuffer();
 
         // Upload original

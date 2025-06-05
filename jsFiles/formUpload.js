@@ -67,7 +67,7 @@ async function uploadToB2(fileBuffer, fileName, mimeType) {
 
 async function generateAndUploadThumbnail(fileBuffer, fileName, mimeType) {
   const thumbnailBuffer = await sharp(fileBuffer)
-    .resize(300, 300, { fit: 'inside', withoutEnlargement: true })
+    .resize(400, 400, { fit: 'inside', withoutEnlargement: true })
     .toBuffer();
   const thumbnailName = `thumbnails/${fileName}`;
   return await uploadToB2(thumbnailBuffer, thumbnailName, mimeType);
