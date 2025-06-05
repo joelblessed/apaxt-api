@@ -64,10 +64,11 @@ async function runTransaction(queries) {
   }
 }
 
-// Get all products with translations (no ID needed)
+
+
 router.get("/allProducts", async (req, res) => {
   try {
-    const language = req.query.lang || "en"; // Default to English
+    const language = req.query.lang || "en"; // Default language
 
     const { rows } = await query(
       `
@@ -78,65 +79,76 @@ router.get("/allProducts", async (req, res) => {
         p.dimensions,
         p.attributes,
         p.created_at,
+        p.thumbnail_index,
         pt.name,
         pt.description,
+
+        -- Include user-specific product rows as JSON array
         json_agg(DISTINCT up.*) FILTER (WHERE up.id IS NOT NULL) AS user_products,
-        array_agg(DISTINCT pi.image_path) FILTER (WHERE pi.image_path IS NOT NULL) AS images,
-        array_agg(DISTINCT pi.thumbnail_path) FILTER (WHERE pi.thumbnail_path IS NOT NULL) AS thumbnails
+
+        -- Include images with thumbnails as JSON array
+        json_agg(DISTINCT jsonb_build_object(
+          'image_path', pi.image_path,
+          'thumbnail_path', pi.thumbnail_path
+        )) FILTER (WHERE pi.image_path IS NOT NULL) AS images
+
       FROM products p
-      JOIN product_translations pt ON p.id = pt.product_id AND pt.language_code = $1
-      LEFT JOIN user_products up ON p.id = up.product_id
-      LEFT JOIN product_images pi ON p.id = pi.product_id
+      JOIN product_translations pt 
+        ON p.id = pt.product_id AND pt.language_code = $1
+      LEFT JOIN user_products up 
+        ON p.id = up.product_id
+      LEFT JOIN product_images pi 
+        ON p.id = pi.product_id
+
       GROUP BY p.id, pt.name, pt.description
       ORDER BY p.created_at DESC
-    `,
+      `,
       [language]
     );
+
+    const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
 
     res.json({
       success: true,
       totalResults: rows.length,
       products: rows.map((product) => {
-        const images = [ "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png"] ;
-        const thumbnails = [ "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png" ];
-      
-        (product.images || []).forEach((img) => {
-          if (img.image_path) images.push(img.image_path);
-          if (img.thumbnail_path) thumbnails.push(img.thumbnail_path);
-        });
-      
+        const imageObjects = product.images || [];
+
+        const images = imageObjects.map((img) => img.image_path);
+        const thumbnails = imageObjects.map((img) => img.thumbnail_path);
+
         return {
           ...product,
-          images,
-          thumbnails,
-          // You can optionally still keep a primaryImage if needed:
-          primaryImage: images[0] || null,
-          thumbnail: thumbnails[0] || null,
-          // Optionally remove the raw "images" field:
-          // images: undefined
+          images: images.length ? images : [fallbackImage],
+          thumbnails: thumbnails.length ? thumbnails : [fallbackImage],
+          primaryImage: images[0] || fallbackImage,
+          thumbnail: thumbnails[0] || fallbackImage,
         };
-      })
+      }),
     });
   } catch (err) {
     console.error("Error fetching all products:", err);
     res.status(500).json({
       success: false,
-      error: "ALiled to fetch products",
+      error: "Failed to fetch products",
       details: process.env.NODE_ENV === "development" ? err.message : undefined,
     });
   }
 });
 
+
+
 // Get all products with pagination and translations
 router.get("/products", async (req, res) => {
   try {
-    const language = req.query.lang || "en"; // Default to English
+    const language = req.query.lang || "en";
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 10);
-
     const offset = (page - 1) * limit;
 
-    // Main query with pagination
+    const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
+
+    // Query with joined user_products and image data
     const productsQuery = `
       SELECT 
         p.id,
@@ -145,20 +157,20 @@ router.get("/products", async (req, res) => {
         p.dimensions,
         p.attributes,
         p.created_at,
+        p.thumbnail_index,
         pt.name,
         pt.description,
         (
           SELECT jsonb_agg(jsonb_build_object(
             'id', up.id,
             'price', up.price,
-            'discount',up.discount,
+            'discount', up.discount,
             'status', up.status,
             'colors', up.colors,
             'owner', up.owner,
             'number_in_stock', up.number_in_stock,
             'phone_number', up.phone_number,
-            'status', up.status,
-            'address',up.address,
+            'address', up.address,
             'city', up.city
           ))
           FROM user_products up 
@@ -173,16 +185,17 @@ router.get("/products", async (req, res) => {
           WHERE pi.product_id = p.id
         ) AS imagespath
       FROM products p
-      JOIN product_translations pt ON p.id = pt.product_id AND pt.language_code = $1
+      JOIN product_translations pt 
+        ON p.id = pt.product_id AND pt.language_code = $1
       ORDER BY p.created_at DESC
       LIMIT $2 OFFSET $3
     `;
 
-    // Count query for pagination metadata
     const countQuery = `
       SELECT COUNT(*) 
       FROM products p
-      JOIN product_translations pt ON p.id = pt.product_id AND pt.language_code = $1
+      JOIN product_translations pt 
+        ON p.id = pt.product_id AND pt.language_code = $1
     `;
 
     const [productsResult, countResult] = await Promise.all([
@@ -190,8 +203,23 @@ router.get("/products", async (req, res) => {
       query(countQuery, [language]),
     ]);
 
-    const totalResults = parseInt(countResult.rows[0].count);
+    const totalResults = parseInt(countResult.rows[0].count, 10);
     const totalPages = Math.ceil(totalResults / limit);
+
+    const products = productsResult.rows.map((product) => {
+      const imageData = product.imagespath || [];
+
+      const images = imageData.map(img => img.image_path).filter(Boolean);
+      const thumbnails = imageData.map(img => img.thumbnail_path).filter(Boolean);
+
+      return {
+        ...product,
+        images: images.length ? images : [fallbackImage],
+        thumbnails: thumbnails.length ? thumbnails : [fallbackImage],
+        primaryImage: images[0] || fallbackImage,
+        thumbnail: thumbnails[0] || fallbackImage,
+      };
+    });
 
     res.json({
       success: true,
@@ -201,27 +229,9 @@ router.get("/products", async (req, res) => {
         totalResults,
         resultsPerPage: limit,
       },
-      products: productsResult.rows.map((product) => {
-        const images = [ "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png"] ;
-        const thumbnails = [ "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png" ];
-      
-        (product.imagespath || []).forEach((img) => {
-          if (img.image_path) images.push(img.image_path);
-          if (img.thumbnail_path) thumbnails.push(img.thumbnail_path);
-        });
-      
-        return {
-          ...product,
-          images,
-          thumbnails,
-          // You can optionally still keep a primaryImage if needed:
-          primaryImage: images[0] || null,
-          thumbnail: thumbnails[0] || null,
-          // Optionally remove the raw "images" field:
-          // images: undefined
-        };
-      })
+      products
     });
+
   } catch (err) {
     console.error("Error fetching products:", err);
     res.status(500).json({
@@ -233,48 +243,103 @@ router.get("/products", async (req, res) => {
 });
 
 // // Get single product by ID
+
+
+
 router.get("/product/:id", async (req, res) => {
   try {
-    const language = req.query.lang || "en"; // Default to English
+    const productId = req.params.id;
+    const language = req.query.lang || "en";
+    const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
 
-    const { rows } = await query(
-      `
+    const queryText = `
       SELECT 
-        p.*,
-        (SELECT json_agg(t) FROM (
-          SELECT * FROM product_translations pt 
+        p.id,
+        p.brand,
+        p.category,
+        p.dimensions,
+        p.attributes,
+        p.thumbnail_index,
+        p.created_at,
+
+        -- Translation
+        (
+          SELECT row_to_json(pt)
+          FROM product_translations pt
           WHERE pt.product_id = p.id AND pt.language_code = $2
-        ) t) AS translations,
-        json_agg(DISTINCT up.*) FILTER (WHERE up.id IS NOT NULL) AS user_products,
-        array_agg(DISTINCT pi.image_path) FILTER (WHERE pi.image_path IS NOT NULL) AS images,
-        array_agg(DISTINCT pi.thumbnail_path) FILTER (WHERE pi.thumbnail_path IS NOT NULL) AS thumbnails
+          LIMIT 1
+        ) AS current_translation,
+
+        -- User products
+        (
+          SELECT json_agg(jsonb_build_object(
+            'id', up.id,
+            'price', up.price,
+            'discount', up.discount,
+            'status', up.status,
+            'colors', up.colors,
+            'owner', up.owner,
+            'number_in_stock', up.number_in_stock,
+            'phone_number', up.phone_number,
+            'address', up.address,
+            'city', up.city
+          ))
+          FROM user_products up
+          WHERE up.product_id = p.id
+        ) AS user_products,
+
+        -- Product images
+        (
+          SELECT json_agg(jsonb_build_object(
+            'image_path', pi.image_path,
+            'thumbnail_path', pi.thumbnail_path
+          ))
+          FROM product_images pi
+          WHERE pi.product_id = p.id
+        ) AS images_data
+
       FROM products p
-      LEFT JOIN user_products up ON p.id = up.product_id
-      LEFT JOIN product_images pi ON p.id = pi.product_id
       WHERE p.id = $1
-      GROUP BY p.id
-    `,
-      [req.params.id, language]
-    );
+      LIMIT 1
+    `;
+
+    const { rows } = await query(queryText, [productId, language]);
 
     if (rows.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Product not found" });
+      return res.status(404).json({ success: false, message: "Product not found" });
     }
+
+    const product = rows[0];
+    const imageData = product.images_data || [];
+
+    const images = imageData.map(img => img.image_path).filter(Boolean);
+    const thumbnails = imageData.map(img => img.thumbnail_path).filter(Boolean);
 
     res.json({
       success: true,
       product: {
-        ...rows[0],
-        current_translation: rows[0].translations?.[0] || null,
-      },
+        id: product.id,
+        brand: product.brand,
+        category: product.category,
+        dimensions: product.dimensions,
+        attributes: product.attributes,
+        created_at: product.created_at,
+        current_translation: product.current_translation || null,
+        user_products: product.user_products || [],
+        images: images.length ? images : [fallbackImage],
+        thumbnails: thumbnails.length ? thumbnails : [fallbackImage],
+        primaryImage: images[0] || fallbackImage,
+        thumbnail: thumbnails[0] || fallbackImage
+      }
     });
+
   } catch (err) {
-    console.error(err);
+    console.error("Error fetching product:", err);
     res.status(500).json({ success: false, error: "Server error" });
   }
 });
+
+
 
 
 //// Get single product by ID all Languages
@@ -1190,6 +1255,7 @@ router.get("/search", async (req, res) => {
     const limit = Math.min(100, parseInt(req.query.limit) || 10);
     const offset = (page - 1) * limit;
     const language = req.query.lang || 'en';
+    const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
 
     if (!searchQuery || searchQuery.length < 2) {
       return res.status(400).json({
@@ -1205,6 +1271,7 @@ router.get("/search", async (req, res) => {
         p.category,
         p.dimensions,
         p.attributes,
+        p.thumbnail_index,
         p.created_at,
         pt.name,
         pt.description,
@@ -1239,17 +1306,14 @@ router.get("/search", async (req, res) => {
 
       FROM products p
       JOIN product_translations pt ON p.id = pt.product_id
-      LEFT JOIN user_products up ON up.product_id = p.id
       WHERE pt.language_code = $1
         AND (
           pt.name ILIKE '%' || $2 || '%' OR
           pt.description ILIKE '%' || $2 || '%' OR
           p.brand->>'name' ILIKE '%' || $2 || '%' OR
           p.category->>'main' ILIKE '%' || $2 || '%' OR
-          p.category->>'sub' ILIKE '%' || $2 || '%' OR
-          up.owner ILIKE '%' || $2 || '%'
+          p.category->>'sub' ILIKE '%' || $2 || '%'
         )
-      GROUP BY p.id, pt.id
       ORDER BY p.created_at DESC
       LIMIT $3 OFFSET $4
     `, [language, searchQuery, limit, offset]);
@@ -1263,27 +1327,27 @@ router.get("/search", async (req, res) => {
       limit,
       totalPages: Math.ceil(totalResults / limit),
       totalResults,
-      results: rows.map(({ total_count, ...product }) =>  {
-        const images = ["https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png"] ;
-        const thumbnails = ["https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png"] ;
-      
-        (product.imagespath || []).forEach((img) => {
-          if (img.image_path) images.push(img.image_path);
-          if (img.thumbnail_path) thumbnails.push(img.thumbnail_path);
-        });
-      
+      results: rows.map(({ images, total_count, ...product }) => {
+        const imageList = Array.isArray(images) ? images : [];
+
+        const imagePaths = imageList
+          .map((img) => img.image_path)
+          .filter(Boolean);
+
+        const thumbnailPaths = imageList
+          .map((img) => img.thumbnail_path)
+          .filter(Boolean);
+
         return {
           ...product,
-          images,
-          thumbnails,
-          // You can optionally still keep a primaryImage if needed:
-          primaryImage: images[0] || null,
-          thumbnail: thumbnails[0] || null,
-          // Optionally remove the raw "images" field:
-          // images: undefined
+          images: imagePaths.length ? imagePaths : [fallbackImage],
+          thumbnails: thumbnailPaths.length ? thumbnailPaths : [fallbackImage],
+          primaryImage: imagePaths[0] || fallbackImage,
+          thumbnail: thumbnailPaths[0] || fallbackImage
         };
       })
     });
+
   } catch (err) {
     console.error("Search error:", err);
     res.status(500).json({
