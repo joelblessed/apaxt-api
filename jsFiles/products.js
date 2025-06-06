@@ -408,196 +408,196 @@ router.get("/productPrev/:productId/:userId", async (req, res) => {
 
 
 // Create new product with images
-router.post("/products", upload.array("images"), async (req, res) => {
-  try {
-    const productData = JSON.parse(req.body.product);
-    const {
-      name_en,
-      name_fr, // Required: name_en
-      description_en,
-      description_fr,
-      brand,
-      category,
-      dimensions,
-      attributes,
-      owner,
-      owner_id,
-      price,
-      number_in_stock,
-      discount,
-      phone_number,
-      status,
-      address,
-      city,
-      colors,
-    } = productData;
+// router.post("/products", upload.array("images"), async (req, res) => {
+//   try {
+//     const productData = JSON.parse(req.body.product);
+//     const {
+//       name_en,
+//       name_fr, // Required: name_en
+//       description_en,
+//       description_fr,
+//       brand,
+//       category,
+//       dimensions,
+//       attributes,
+//       owner,
+//       owner_id,
+//       price,
+//       number_in_stock,
+//       discount,
+//       phone_number,
+//       status,
+//       address,
+//       city,
+//       colors,
+//     } = productData;
 
-    // Validate required fields
-    if (!name_en || !owner_id || !price) {
-      return res.status(400).json({
-        success: false,
-        message: "English name, owner_id, and price are required",
-      });
-    }
+//     // Validate required fields
+//     if (!name_en || !owner_id || !price) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "English name, owner_id, and price are required",
+//       });
+//     }
 
-    // Process image uploads if they exist
-    let uploadedImages = [];
-    let uploadedThumbnails = [];
-    const images = req.files || [];
+//     // Process image uploads if they exist
+//     let uploadedImages = [];
+//     let uploadedThumbnails = [];
+//     const images = req.files || [];
 
-    if (images.length > 0) {
-      await authorize();
-      const uploadUrlResponse = await b2.getUploadUrl({
-        bucketId: process.env.B2_BUCKET_ID,
-      });
+//     if (images.length > 0) {
+//       await authorize();
+//       const uploadUrlResponse = await b2.getUploadUrl({
+//         bucketId: process.env.B2_BUCKET_ID,
+//       });
 
-      const { uploadUrl, authorizationToken } = uploadUrlResponse.data;
+//       const { uploadUrl, authorizationToken } = uploadUrlResponse.data;
 
-      for (const file of images) {
-        const fileName = `products/${Date.now()}_${file.originalname}`;
-        const thumbnailName = `products/thumbnails/${Date.now()}_${
-          file.originalname
-        }`;
+//       for (const file of images) {
+//         const fileName = `products/${Date.now()}_${file.originalname}`;
+//         const thumbnailName = `products/thumbnails/${Date.now()}_${
+//           file.originalname
+//         }`;
 
-        // Generate thumbnail
-        const thumbnailBuffer = await sharp(file.buffer)
-          .resize(400, 400)
-          .toBuffer();
+//         // Generate thumbnail
+//         const thumbnailBuffer = await sharp(file.buffer)
+//           .resize(400, 400)
+//           .toBuffer();
 
-        // Upload original
-        await b2.uploadFile({
-          uploadUrl,
-          uploadAuthToken: authorizationToken,
-          fileName,
-          data: file.buffer,
-          contentType: file.mimetype,
-        });
+//         // Upload original
+//         await b2.uploadFile({
+//           uploadUrl,
+//           uploadAuthToken: authorizationToken,
+//           fileName,
+//           data: file.buffer,
+//           contentType: file.mimetype,
+//         });
 
-        // Upload thumbnail
-        await b2.uploadFile({
-          uploadUrl,
-          uploadAuthToken: authorizationToken,
-          fileName: thumbnailName,
-          data: thumbnailBuffer,
-          contentType: file.mimetype,
-        });
+//         // Upload thumbnail
+//         await b2.uploadFile({
+//           uploadUrl,
+//           uploadAuthToken: authorizationToken,
+//           fileName: thumbnailName,
+//           data: thumbnailBuffer,
+//           contentType: file.mimetype,
+//         });
 
-        uploadedImages.push(
-          `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${fileName}`
-        );
-        uploadedThumbnails.push(
-          `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${thumbnailName}`
-        );
-      }
-    }
+//         uploadedImages.push(
+//           `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${fileName}`
+//         );
+//         uploadedThumbnails.push(
+//           `${process.env.B2_BUCKET_URL}${process.env.B2_BUCKET_NAME}/${thumbnailName}`
+//         );
+//       }
+//     }
 
-    // Start transaction
-    const results = await runTransaction([
-      // Insert main product (language-independent data)
-      {
-        text: `
-          INSERT INTO products (brand, category, dimensions, attributes)
-          VALUES ($1, $2, $3, $4)
-          RETURNING id
-        `,
-        values: [
-          JSON.stringify(brand || {}),
-          JSON.stringify(category || {}),
-          JSON.stringify(dimensions || {}),
-          JSON.stringify(attributes || {}),
-        ],
-      },
-      // Insert English translation (required)
-      {
-        text: `
-          INSERT INTO product_translations 
-          (product_id, language_code, name, description)
-          VALUES ($1, 'en', $2, $3)
-        `,
-        values: ["placeholder", name_en, description_en],
-      },
-      // Insert French translation if provided
-      ...(name_fr
-        ? [
-            {
-              text: `
-          INSERT INTO product_translations 
-          (product_id, language_code, name, description)
-          VALUES ($1, 'fr', $2, $3)
-        `,
-              values: ["placeholder", name_fr, description_fr],
-            },
-          ]
-        : []),
-      // Insert user_product relationship
-      {
-        text: `
-          INSERT INTO user_products (
-            product_id, owner, owner_id, price, number_in_stock, 
-            discount, phone_number, status, address, city, colors
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-          RETURNING *
-        `,
-        values: [
-          "placeholder",
-          owner,
-          owner_id,
-          parseFloat(price),
-          parseInt(number_in_stock) || 1,
-          parseFloat(discount) || 0,
-          phone_number,
-          status || "available",
-          address,
-          city,
-          colors ? colors.split(",") : [],
-        ],
-      },
-      // Insert images if any
-      ...(uploadedImages.length > 0
-        ? [
-            {
-              text: `
-          INSERT INTO product_images (product_id, image_path, thumbnail_path)
-          VALUES ${uploadedImages
-            .map((_, i) => `('placeholder', $${i * 2 + 1}, $${i * 2 + 2})`)
-            .join(",")}
-        `,
-              values: uploadedImages.flatMap((img, i) => [
-                img,
-                uploadedThumbnails[i],
-              ]),
-            },
-          ]
-        : []),
-    ]);
+//     // Start transaction
+//     const results = await runTransaction([
+//       // Insert main product (language-independent data)
+//       {
+//         text: `
+//           INSERT INTO products (brand, category, dimensions, attributes)
+//           VALUES ($1, $2, $3, $4)
+//           RETURNING id
+//         `,
+//         values: [
+//           JSON.stringify(brand || {}),
+//           JSON.stringify(category || {}),
+//           JSON.stringify(dimensions || {}),
+//           JSON.stringify(attributes || {}),
+//         ],
+//       },
+//       // Insert English translation (required)
+//       {
+//         text: `
+//           INSERT INTO product_translations 
+//           (product_id, language_code, name, description)
+//           VALUES ($1, 'en', $2, $3)
+//         `,
+//         values: ["placeholder", name_en, description_en],
+//       },
+//       // Insert French translation if provided
+//       ...(name_fr
+//         ? [
+//             {
+//               text: `
+//           INSERT INTO product_translations 
+//           (product_id, language_code, name, description)
+//           VALUES ($1, 'fr', $2, $3)
+//         `,
+//               values: ["placeholder", name_fr, description_fr],
+//             },
+//           ]
+//         : []),
+//       // Insert user_product relationship
+//       {
+//         text: `
+//           INSERT INTO user_products (
+//             product_id, owner, owner_id, price, number_in_stock, 
+//             discount, phone_number, status, address, city, colors
+//           )
+//           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+//           RETURNING *
+//         `,
+//         values: [
+//           "placeholder",
+//           owner,
+//           owner_id,
+//           parseFloat(price),
+//           parseInt(number_in_stock) || 1,
+//           parseFloat(discount) || 0,
+//           phone_number,
+//           status || "available",
+//           address,
+//           city,
+//           colors ? colors.split(",") : [],
+//         ],
+//       },
+//       // Insert images if any
+//       ...(uploadedImages.length > 0
+//         ? [
+//             {
+//               text: `
+//           INSERT INTO product_images (product_id, image_path, thumbnail_path)
+//           VALUES ${uploadedImages
+//             .map((_, i) => `('placeholder', $${i * 2 + 1}, $${i * 2 + 2})`)
+//             .join(",")}
+//         `,
+//               values: uploadedImages.flatMap((img, i) => [
+//                 img,
+//                 uploadedThumbnails[i],
+//               ]),
+//             },
+//           ]
+//         : []),
+//     ]);
 
-    // Replace placeholder with actual product_id
-    const productId = results[0].rows[0].id;
-    results[1].values[0] = productId;
-    if (name_fr) results[2].values[0] = productId;
-    results[name_fr ? 3 : 2].values[0] = productId;
-    if (uploadedImages.length > 0) {
-      results[name_fr ? 4 : 3].values = results[name_fr ? 4 : 3].values.map(
-        (v) => (v === "placeholder" ? productId : v)
-      );
-    }
+//     // Replace placeholder with actual product_id
+//     const productId = results[0].rows[0].id;
+//     results[1].values[0] = productId;
+//     if (name_fr) results[2].values[0] = productId;
+//     results[name_fr ? 3 : 2].values[0] = productId;
+//     if (uploadedImages.length > 0) {
+//       results[name_fr ? 4 : 3].values = results[name_fr ? 4 : 3].values.map(
+//         (v) => (v === "placeholder" ? productId : v)
+//       );
+//     }
 
-    res.status(201).json({
-      success: true,
-      productId,
-      listing: results[name_fr ? 3 : 2].rows[0],
-      images: uploadedImages,
-    });
-  } catch (err) {
-    console.error("Error creating product:", err);
-    res.status(500).json({
-      success: false,
-      error: "Failed to create product",
-      details: process.env.NODE_ENV === "development" ? err.message : undefined,
-    });
-  }
-});
+//     res.status(201).json({
+//       success: true,
+//       productId,
+//       listing: results[name_fr ? 3 : 2].rows[0],
+//       images: uploadedImages,
+//     });
+//   } catch (err) {
+//     console.error("Error creating product:", err);
+//     res.status(500).json({
+//       success: false,
+//       error: "Failed to create product",
+//       details: process.env.NODE_ENV === "development" ? err.message : undefined,
+//     });
+//   }
+// });
 
 // // Update product
 // router.put("/product/:id", upload.array("images"), async (req, res) => {
@@ -861,7 +861,7 @@ router.put("/adminEdit/:id/:user_id", upload.array("images"), async (req, res) =
         const thumbnailName = `products/thumbnails/${timestamp}_${file.originalname}`;
 
         const thumbnailBuffer = await sharp(file.buffer)
-          .resize(200, 200)
+          .resize(400, 400)
           .toBuffer();
 
         await b2.uploadFile({
