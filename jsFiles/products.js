@@ -143,7 +143,7 @@ router.get("/products", async (req, res) => {
   try {
     const language = req.query.lang || "en";
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, parseInt(req.query.limit) || 10);
+    const limit = Math.min(100, parseInt(req.query.limit) || 1000);
     const offset = (page - 1) * limit;
 
     const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
@@ -1252,7 +1252,7 @@ router.get("/search", async (req, res) => {
   try {
     const searchQuery = req.query.query?.trim();
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, parseInt(req.query.limit) || 10);
+    const limit = Math.min(100, parseInt(req.query.limit) || 10000);
     const offset = (page - 1) * limit;
     const language = req.query.lang || 'en';
     const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
@@ -1306,12 +1306,14 @@ router.get("/search", async (req, res) => {
 
       FROM products p
       JOIN product_translations pt ON p.id = pt.product_id
+      JOIN user_products up ON p.id = up.product_id
       WHERE pt.language_code = $1
         AND (
           pt.name ILIKE '%' || $2 || '%' OR
           pt.description ILIKE '%' || $2 || '%' OR
           p.brand->>'name' ILIKE '%' || $2 || '%' OR
           p.category->>'main' ILIKE '%' || $2 || '%' OR
+          up.owner ILIKE '%' || $2 || '%' OR
           p.category->>'sub' ILIKE '%' || $2 || '%'
         )
       ORDER BY p.created_at DESC
