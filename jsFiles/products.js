@@ -168,6 +168,7 @@ router.get("/products", async (req, res) => {
             'status', up.status,
             'colors', up.colors,
             'owner', up.owner,
+            'owner_id',up.owner_id,
             'number_in_stock', up.number_in_stock,
             'phone_number', up.phone_number,
             'address', up.address,
@@ -241,6 +242,127 @@ router.get("/products", async (req, res) => {
     });
   }
 });
+
+//fetch by id
+router.get("/userProducts", async (req, res) => {
+  try {
+    const language = req.query.lang || "en";
+    const ownerId = req.query.owner_id;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 1000);
+    const offset = (page - 1) * limit;
+
+    if (!ownerId) {
+      return res.status(400).json({
+        success: false,
+        error: "Missing owner_id in query parameters",
+      });
+    }
+
+    const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
+
+    const productsQuery = `
+      SELECT 
+        p.id,
+        p.brand,
+        p.category,
+        p.dimensions,
+        p.attributes,
+        p.created_at,
+        p.thumbnail_index,
+        pt.name,
+        pt.description,
+        (
+          SELECT jsonb_agg(jsonb_build_object(
+            'id', up.id,
+            'price', up.price,
+            'discount', up.discount,
+            'status', up.status,
+            'colors', up.colors,
+            'owner', up.owner,
+            'owner_id', up.owner_id,
+            'number_in_stock', up.number_in_stock,
+            'phone_number', up.phone_number,
+            'address', up.address,
+            'city', up.city
+          ))
+          FROM user_products up 
+          WHERE up.product_id = p.id AND up.owner_id = $2
+        ) AS user_products,
+        (
+          SELECT jsonb_agg(jsonb_build_object(
+            'image_path', pi.image_path,
+            'thumbnail_path', pi.thumbnail_path
+          ))
+          FROM product_images pi
+          WHERE pi.product_id = p.id
+        ) AS imagespath
+      FROM products p
+      JOIN product_translations pt 
+        ON p.id = pt.product_id AND pt.language_code = $1
+      WHERE EXISTS (
+        SELECT 1 FROM user_products up 
+        WHERE up.product_id = p.id AND up.owner_id = $2
+      )
+      ORDER BY p.created_at DESC
+      LIMIT $3 OFFSET $4
+    `;
+
+    const countQuery = `
+      SELECT COUNT(*) 
+      FROM products p
+      JOIN product_translations pt 
+        ON p.id = pt.product_id AND pt.language_code = $1
+      WHERE EXISTS (
+        SELECT 1 FROM user_products up 
+        WHERE up.product_id = p.id AND up.owner_id = $2
+      )
+    `;
+
+    const [productsResult, countResult] = await Promise.all([
+      query(productsQuery, [language, ownerId, limit, offset]),
+      query(countQuery, [language, ownerId]),
+    ]);
+
+    const totalResults = parseInt(countResult.rows[0].count, 10);
+    const totalPages = Math.ceil(totalResults / limit);
+
+    const products = productsResult.rows.map((product) => {
+      const imageData = product.imagespath || [];
+
+      const images = imageData.map(img => img.image_path).filter(Boolean);
+      const thumbnails = imageData.map(img => img.thumbnail_path).filter(Boolean);
+
+      return {
+        ...product,
+        images: images.length ? images : [fallbackImage],
+        thumbnails: thumbnails.length ? thumbnails : [fallbackImage],
+        primaryImage: images[0] || fallbackImage,
+        thumbnail: thumbnails[0] || fallbackImage,
+      };
+    });
+
+    res.json({
+      success: true,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalResults,
+        resultsPerPage: limit,
+      },
+      products
+    });
+
+  } catch (err) {
+    console.error("Error fetching products by owner_id:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch products",
+      ...(process.env.NODE_ENV === "development" && { details: err.message }),
+    });
+  }
+});
+
 
 // // Get single product by ID
 
