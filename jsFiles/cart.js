@@ -119,7 +119,7 @@ router.put('/cart/:productId/:action', verifyToken, async (req, res) => {
         const cartId = await getOrCreateCart(req.userId);
 
         const itemResult = await query(
-            'SELECT id, quantity FROM cart_items WHERE cart_id = $1 AND product_id = $2',
+            'SELECT id, quantity FROM cart_items WHERE cart_id = $1 AND user_product_id = $2',
             [cartId, productId]
         );
 
@@ -149,9 +149,9 @@ router.put('/cart/:productId/:action', verifyToken, async (req, res) => {
         }
 
         const updatedCart = await query(
-            `SELECT ci.id, p.id as product_id, p.name, p.price, ci.quantity 
+            `SELECT ci.id, p.id as user_product_id, ci.quantity 
              FROM cart_items ci
-             JOIN products p ON ci.product_id = p.id
+             JOIN products p ON ci.user_product_id = p.id
              WHERE ci.cart_id = $1`,
             [cartId]
         );
@@ -170,7 +170,7 @@ router.delete("/cart/:productId", verifyToken, async (req, res) => {
         const cartId = await getOrCreateCart(req.userId);
 
         const result = await query(
-            'DELETE FROM cart_items WHERE cart_id = $1 AND product_id = $2 RETURNING id',
+            'DELETE FROM cart_items WHERE cart_id = $1 AND user_product_id = $2 RETURNING id',
             [cartId, productId]
         );
 
@@ -180,9 +180,9 @@ router.delete("/cart/:productId", verifyToken, async (req, res) => {
 
         // Get updated cart
         const updatedCart = await query(
-            `SELECT ci.id, p.id as product_id, p.name, p.price, ci.quantity 
+            `SELECT ci.id, p.id as user_product_id, ci.quantity 
              FROM cart_items ci
-             JOIN products p ON ci.product_id = p.id
+             JOIN products p ON ci.user_product_id = p.id
              WHERE ci.cart_id = $1`,
             [cartId]
         );
