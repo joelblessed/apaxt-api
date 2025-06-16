@@ -8,14 +8,16 @@ fs.createReadStream("product_bulk_import.csv")
     try {
       // 1. Insert into products
       const productInsert = await query(`
-        INSERT INTO products (brand, category, dimensions, attributes)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO products (brand, category, dimensions, attributes, thumbnail_index)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING id
       `, [
         JSON.parse(row.brand),
         JSON.parse(row.category),
         JSON.parse(row.dimensions),
-        JSON.parse(row.attributes)
+        JSON.parse(row.attributes),
+        thumbnail_index
+
       ]);
       const productId = productInsert.rows[0].id;
 
@@ -35,9 +37,9 @@ fs.createReadStream("product_bulk_import.csv")
       await query(`
         INSERT INTO user_products (
           product_id, owner, owner_id, price, number_in_stock, discount,
-          phone_number, status, address, city, colors
+          phone_number, status, address, city, colors, size
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       `, [
         productId,
         row.owner,
@@ -49,7 +51,8 @@ fs.createReadStream("product_bulk_import.csv")
         row.status || 'available',
         row.address,
         row.city,
-        row.colors.replace(/[{}]/g, '').split(',') // convert to array
+        row.colors.replace(/[{}]/g, '').split(','), // convert to array
+        row.size.replace(/[{}]/g, '').split(',') // convert to array
       ]);
 
       console.log(`Inserted product ID ${productId}`);

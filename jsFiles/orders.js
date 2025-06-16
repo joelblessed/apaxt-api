@@ -2,12 +2,11 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const jwt = require("jsonwebtoken");
-const {query} = require("./db"); // PostgreSQL connection
+const { query } = require("./db"); // PostgreSQL connection
 const router = express.Router();
 
 router.use(cors());
 router.use(express.json());
-
 
 // Validate JWT token
 const validateToken = (token) => {
@@ -23,7 +22,9 @@ const authenticate = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
   const decoded = validateToken(token); // ✅ Correct
   if (!token || !decoded) {
-    return res.status(401).json({ message: "Unauthorized: Invalid or missing token" });
+    return res
+      .status(401)
+      .json({ message: "Unauthorized: Invalid or missing token" });
   }
   req.user = decoded;
   next();
@@ -35,9 +36,11 @@ router.post("/order", async (req, res) => {
   const decoded = validateToken(token); // ✅ not authenticate
 
   if (!token || !decoded) {
-    return res.status(401).json({ message: "Unauthorized: Invalid or missing token" });
+    return res
+      .status(401)
+      .json({ message: "Unauthorized: Invalid or missing token" });
   }
-  
+
   try {
     const sql = `
       INSERT INTO orders (user_id, cart, shipping, status, total_amount, payment_method, user_data)
@@ -55,8 +58,9 @@ router.post("/order", async (req, res) => {
     ];
 
     const result = await query(sql, values);
-    res.status(201).json({ message: "Order placed successfully", order: result.rows[0] });
-
+    res
+      .status(201)
+      .json({ message: "Order placed successfully", order: result.rows[0] });
   } catch (err) {
     console.error("Error placing order:", err);
     res.status(500).json({ message: "Internal server error" });
@@ -73,7 +77,6 @@ router.post("/order", async (req, res) => {
 //     res.status(500).json({ message: "Internal server error" });
 //   }
 // });
-
 
 // 1. Fetch all orders (admin/testing)
 router.get("/orders", authenticate, async (req, res) => {
@@ -92,82 +95,87 @@ router.get("/orders", authenticate, async (req, res) => {
     res.status(500).json({ message: "Error fetching orders" });
   }
 });
-  
-  // 2. Fetch orders by userId
-  router.get("/orders/:userId", authenticate, async (req, res) => {
-    const { userId } = req.params;
-    try {
-      const result = await query(
-        "SELECT * FROM orders WHERE user_id = $1 ORDER BY placed_at DESC",
-        [userId]
-      );
-      res.json(result.rows);
-    } catch (err) {
-      res.status(500).json({ message: "Error fetching user orders" });
-    }
-  });
-  
-  // 3. Cancel an Order
-  router.patch("/orders/cancel/:orderId", authenticate, async (req, res) => {
-    const { orderId } = req.params;
-    try {
-      const result = await query(
-        "UPDATE orders SET status = $1 WHERE id = $2 RETURNING *",
-        ["Canceled", orderId]
-      );
-      if (result.rowCount === 0) {
-        return res.status(404).json({ message: "Order not found" });
-      }
-      res.json({ message: "Order canceled successfully" });
-    } catch (err) {
-      res.status(500).json({ message: "Error canceling order" });
-    }
-  });
-  
-  // 4. Mark as Delivered and store delivery date
-  router.patch("/orders/deliver/:orderId", authenticate, async (req, res) => {
-    const { orderId } = req.params;
-    const deliveryDate = new Date().toISOString();
-  
-    try {
-      const getOrder = await query("SELECT shipping FROM orders WHERE id = $1", [orderId]);
-      if (getOrder.rowCount === 0) return res.status(404).json({ message: "Order not found" });
-  
-      const shipping = getOrder.rows[0].shipping;
-      shipping.deliveryDate = deliveryDate;
-  
-      await query(
-        "UPDATE orders SET status = $1, shipping = $2 WHERE id = $3",
-        ["Delivered", JSON.stringify(shipping), orderId]
-      );
-  
-      res.json({ message: "Order marked as delivered", deliveryDate });
-    } catch (err) {
-      res.status(500).json({ message: "Error updating delivery status" });
-    }
-  });
 
-  router.patch("/orders/redo/:orderId", authenticate, async (req, res) => {
-    const { orderId } = req.params;
-    const deliveryDate = new Date().toISOString();
-  
-    try {
-      const getOrder = await query("SELECT shipping FROM orders WHERE id = $1", [orderId]);
-      if (getOrder.rowCount === 0) return res.status(404).json({ message: "Order not found" });
-  
-      const shipping = getOrder.rows[0].shipping;
-      shipping.deliveryDate = deliveryDate;
-  
-      await query(
-        "UPDATE orders SET status = $1, shipping = $2 WHERE id = $3",
-        ["Pending", JSON.stringify(shipping), orderId]
-      );
-  
-      res.json({ message: "Order marked as delivered", deliveryDate });
-    } catch (err) {
-      res.status(500).json({ message: "Error updating delivery status" });
+// 2. Fetch orders by userId
+router.get("/orders/:userId", authenticate, async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const result = await query(
+      "SELECT * FROM orders WHERE user_id = $1 ORDER BY placed_at DESC",
+      [userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching user orders" });
+  }
+});
+
+// 3. Cancel an Order
+router.patch("/orders/cancel/:orderId", authenticate, async (req, res) => {
+  const { orderId } = req.params;
+  try {
+    const result = await query(
+      "UPDATE orders SET status = $1 WHERE id = $2 RETURNING *",
+      ["Canceled", orderId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Order not found" });
     }
-  });
-  
-  
+    res.json({ message: "Order canceled successfully" });
+  } catch (err) {
+    res.status(500).json({ message: "Error canceling order" });
+  }
+});
+
+// 4. Mark as Delivered and store delivery date
+router.patch("/orders/deliver/:orderId", authenticate, async (req, res) => {
+  const { orderId } = req.params;
+  const deliveryDate = new Date().toISOString();
+
+  try {
+    const getOrder = await query("SELECT shipping FROM orders WHERE id = $1", [
+      orderId,
+    ]);
+    if (getOrder.rowCount === 0)
+      return res.status(404).json({ message: "Order not found" });
+
+    const shipping = getOrder.rows[0].shipping;
+    shipping.deliveryDate = deliveryDate;
+
+    await query(
+      "UPDATE orders SET status = $1, payment_status = $2, shipping = $3 WHERE id = $4",
+      ["Delivered", "Paid", JSON.stringify(shipping), orderId]
+    );
+
+    res.json({ message: "Order marked as delivered", deliveryDate });
+  } catch (err) {
+    res.status(500).json({ message: "Error updating delivery status" });
+  }
+});
+
+router.patch("/orders/redo/:orderId", authenticate, async (req, res) => {
+  const { orderId } = req.params;
+  const deliveryDate = new Date().toISOString();
+
+  try {
+    const getOrder = await query("SELECT shipping FROM orders WHERE id = $1", [
+      orderId,
+    ]);
+    if (getOrder.rowCount === 0)
+      return res.status(404).json({ message: "Order not found" });
+
+    const shipping = getOrder.rows[0].shipping;
+    shipping.deliveryDate = deliveryDate;
+
+    await query(
+      "UPDATE orders SET status = $1, payment_status = $2, shipping = $3 WHERE id = $4",
+      ["pending", "pending", JSON.stringify(shipping), orderId]
+    );
+
+    res.json({ message: "Order marked as delivered", deliveryDate });
+  } catch (err) {
+    res.status(500).json({ message: "Error updating delivery status" });
+  }
+});
+
 module.exports = router;
