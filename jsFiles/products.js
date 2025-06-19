@@ -7,6 +7,7 @@ const sharp = require("sharp");
 const { b2, authorize, getUploadDetails } = require("./b2");
 
 const jwt = require("jsonwebtoken");
+const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/logo.png" ;
 
 
 // Auth middleware
@@ -106,7 +107,6 @@ router.get("/allProducts", async (req, res) => {
       [language]
     );
 
-    const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
 
     res.json({
       success: true,
@@ -145,8 +145,6 @@ router.get("/products", async (req, res) => {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 1000);
     const offset = (page - 1) * limit;
-
-    const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
 
     // Query with joined user_products and image data
     const productsQuery = `
@@ -259,7 +257,6 @@ router.get("/userProducts", async (req, res) => {
       });
     }
 
-    const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
 
     const productsQuery = `
       SELECT 
@@ -375,7 +372,6 @@ router.get("/allUserProducts", async (req, res) => {
       });
     }
 
-    const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
 
     const productsQuery = `
       SELECT 
@@ -470,8 +466,6 @@ router.get("/allUserProducts", async (req, res) => {
         error: "Missing owner_id in query parameters",
       });
     }
-
-    const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
 
     const productsQuery = `
       SELECT 
@@ -584,7 +578,6 @@ router.get("/product/:id", async (req, res) => {
   try {
     const productId = req.params.id;
     const language = req.query.lang || "en";
-    const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
 
     const queryText = `
       SELECT 
@@ -1589,7 +1582,6 @@ router.get("/search", async (req, res) => {
     const limit = Math.min(100, parseInt(req.query.limit) || 10000);
     const offset = (page - 1) * limit;
     const language = req.query.lang || 'en';
-    const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/a338c608906653eab6d6b8039c9705a9.png";
 
     if (!searchQuery || searchQuery.length < 2) {
       return res.status(400).json({
