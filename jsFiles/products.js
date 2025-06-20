@@ -1579,7 +1579,7 @@ router.get("/search", async (req, res) => {
   try {
     const searchQuery = req.query.query?.trim();
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, parseInt(req.query.limit) || 10000);
+    const limit = Math.min(100, parseInt(req.query.limit) || 100);
     const offset = (page - 1) * limit;
     const language = req.query.lang || 'en';
 
@@ -1686,4 +1686,125 @@ router.get("/search", async (req, res) => {
   }
 });
 
+
+router.get("/ownerSearch", async (req, res) => {
+  try {
+    const searchQuery = req.query.query?.trim();
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 100);
+    const offset = (page - 1) * limit;
+    const language = req.query.lang || 'en';
+    const ownerId = req.query.owner_id; // <-- Add owner_id filter
+
+    if (!searchQuery || searchQuery.length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Search query must be at least 2 characters"
+      });
+    }
+
+    // Build dynamic SQL for owner_id filter
+    let ownerFilter = '';
+    let params = [language, searchQuery, limit, offset];
+    if (ownerId) {
+      ownerFilter = 'AND up.owner_id = $5';
+      params.push(ownerId);
+    }
+
+    const { rows } = await query(`
+      SELECT 
+        p.id,
+        p.brand,
+        p.category,
+        p.dimensions,
+        p.attributes,
+        p.thumbnail_index,
+        p.created_at,
+        pt.name,
+        pt.description,
+
+        (
+          SELECT jsonb_agg(jsonb_build_object(
+            'id', up2.id,
+            'price', up2.price,
+            'discount', up2.discount,
+            'status', up2.status,
+            'colors', up2.colors,
+            'owner', up2.owner,
+            'number_in_stock', up2.number_in_stock,
+            'phone_number', up2.phone_number,
+            'address', up2.address,
+            'city', up2.city
+          ))
+          FROM user_products up2
+          WHERE up2.product_id = p.id
+        ) AS user_products,
+
+        (
+          SELECT jsonb_agg(jsonb_build_object(
+            'image_path', pi.image_path,
+            'thumbnail_path', pi.thumbnail_path
+          ))
+          FROM product_images pi
+          WHERE pi.product_id = p.id
+        ) AS images,
+
+        COUNT(*) OVER() AS total_count
+
+      FROM products p
+      JOIN product_translations pt ON p.id = pt.product_id
+      JOIN user_products up ON p.id = up.product_id
+      WHERE pt.language_code = $1
+        AND (
+          pt.name ILIKE '%' || $2 || '%' OR
+          pt.description ILIKE '%' || $2 || '%' OR
+          p.brand->>'name' ILIKE '%' || $2 || '%' OR
+          p.category->>'main' ILIKE '%' || $2 || '%' OR
+          up.owner ILIKE '%' || $2 || '%' OR
+          p.category->>'sub' ILIKE '%' || $2 || '%'
+        )
+        ${ownerFilter}
+      ORDER BY p.created_at DESC
+      LIMIT $3 OFFSET $4
+    `, params);
+
+    const totalResults = rows[0]?.total_count || 0;
+
+    res.json({
+      success: true,
+      query: searchQuery,
+      page,
+      limit,
+      totalPages: Math.ceil(totalResults / limit),
+      totalResults,
+      results: rows.map(({ images, total_count, ...product }) => {
+        const imageList = Array.isArray(images) ? images : [];
+
+        const imagePaths = imageList
+          .map((img) => img.image_path)
+          .filter(Boolean);
+
+        const thumbnailPaths = imageList
+          .map((img) => img.thumbnail_path)
+          .filter(Boolean);
+
+        return {
+          ...product,
+          images: imagePaths.length ? imagePaths : [fallbackImage],
+          thumbnails: thumbnailPaths.length ? thumbnailPaths : [fallbackImage],
+          primaryImage: imagePaths[0] || fallbackImage,
+          thumbnail: thumbnailPaths[0] || fallbackImage
+        };
+      })
+    });
+
+  } catch (err) {
+    console.error("Search error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Search failed",
+      ...(process.env.NODE_ENV === "development" && { details: err.message }),
+    });
+  }
+});
 module.exports = router;
