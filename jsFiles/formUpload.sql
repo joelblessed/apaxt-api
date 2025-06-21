@@ -92,7 +92,8 @@ CREATE TABLE user_products (
   address TEXT,
   city VARCHAR(50),
   colors TEXT[],
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Set the sequence to the highest existing ID + 1
@@ -166,3 +167,17 @@ SET name_en = pt_en.name, name_fr = pt_fr.name
 FROM product_translations pt_en, product_translations pt_fr
 WHERE pt_en.product_id = p.id AND pt_en.language_code = 'en'
   AND pt_fr.product_id = p.id AND pt_fr.language_code = 'fr';
+
+  CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS set_products_updated_at ON products;
+CREATE TRIGGER set_products_updated_at
+BEFORE UPDATE ON products
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
