@@ -31,6 +31,10 @@ const formUploadRoutes = require("./jsFiles/formUpload");
 const productsRoutes = require("./jsFiles/products");
 const passwardResetRoutes = require("./jsFiles/passwardReset");
 const logsRoutes = require("./jsFiles/logs");
+const categoryRoutes = require("./jsFiles/category")
+const brandRoutes = require("./jsFiles/brands")
+const subCategoryRoutes = require("./jsFiles/subCategory")
+const ownerProductsRoutes = require("./jsFiles/ownerProduct")
 
 
 const JWT_SECRET = process.env.JWT_SECRET 
@@ -64,16 +68,16 @@ const authenticateToken = (req, res, next) => {
 
 app.use(express.urlencoded({extended:true}))
 
-app.use(cors({
-    origin:[
-      "http://localhost:3000",
-      "https://apaxt2.netlify.app",
-      "https://apaxt.com",
-      "http://apaxt.com"
-    ],
-    methods:"GET, POST, PUT, DELETE",
-    allowedHeaders:"Content-Type, Authorization" // Fixed typo: "Athorization" -> "Authorization"
-}))
+// app.use(cors({
+//     origin:[
+//       "http://localhost:3000",
+//       "https://apaxt2.netlify.app",
+//       "https://apaxt.com",
+//       "http://apaxt.com"
+//     ],
+//     methods:"GET, POST, PUT, DELETE",
+//     allowedHeaders:"Content-Type, Authorization" // Fixed typo: "Athorization" -> "Authorization"
+// }))
 
 app.use("/", ordersRoutes);
 app.use("/", cartRoutes);
@@ -86,6 +90,10 @@ app.use("/", formUploadRoutes);
 app.use("/", productsRoutes);
 app.use("/", passwardResetRoutes);
 app.use("/", logsRoutes);
+app.use("/", categoryRoutes);
+app.use("/", brandRoutes)
+app.use("/", subCategoryRoutes)
+app.use("/", ownerProductsRoutes)
 
 
 

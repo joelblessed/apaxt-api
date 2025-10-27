@@ -1575,6 +1575,133 @@ router.delete("/delete/:productId/user/:userId", async (req, res) => {
 // });
 
 // // Search products with translations
+router.get("/categories", async (req, res) => {
+  try {
+    const searchQuery = req.query.query?.trim();
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 100);
+    const di1 = req.query.di1;
+    const di2 = req.query.di2;
+    const di3 = req.query.di3;
+
+
+   
+    const offset = (page - 1) * limit;
+    const language = req.query.lang || 'en';
+
+    if (!searchQuery || searchQuery.length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Search query must be at least 2 characters"
+      });
+    }
+    
+let filterConstraints = '';
+let params = [language, searchQuery, limit, offset]; // default order: $1..$4
+
+if (di3) {
+  // Add UUID as the LAST parameter, not before limit/offset
+  filterConstraints = `
+    p.${di1}->>'${di2}' ILIKE '%' || $2 || '%'
+    AND up.owner_id = $5
+  `;
+  params = [language, searchQuery, limit, offset, di3]; // owner_id is now $5
+} else {
+  filterConstraints = `p.${di1}->>'${di2}' ILIKE '%' || $2 || '%'`;
+}
+
+const queryText = `
+  SELECT 
+    p.id,
+    p.brand,
+    p.category,
+    p.dimensions,
+    p.attributes,
+    p.thumbnail_index,
+    p.created_at,
+    pt.name,
+    pt.description,
+
+    (
+      SELECT jsonb_agg(jsonb_build_object(
+        'id', up.id,
+        'price', up.price,
+        'discount', up.discount,
+        'status', up.status,
+        'colors', up.colors,
+        'owner', up.owner,
+        'number_in_stock', up.number_in_stock,
+        'phone_number', up.phone_number,
+        'address', up.address,
+        'city', up.city
+      ))
+      FROM user_products up
+      WHERE up.product_id = p.id
+    ) AS user_products,
+
+    (
+      SELECT jsonb_agg(jsonb_build_object(
+        'image_path', pi.image_path,
+        'thumbnail_path', pi.thumbnail_path
+      ))
+      FROM product_images pi
+      WHERE pi.product_id = p.id
+    ) AS images,
+
+    COUNT(*) OVER() AS total_count
+
+  FROM products p
+  JOIN product_translations pt ON p.id = pt.product_id
+  JOIN user_products up ON p.id = up.product_id
+  WHERE pt.language_code = $1
+    AND (${filterConstraints})
+  ORDER BY p.created_at DESC
+  LIMIT $3 OFFSET $4
+`;
+
+const { rows } = await query(queryText, params);
+
+    const totalResults = rows[0]?.total_count || 0;
+
+    res.json({
+      success: true,
+      query: searchQuery,
+      page,
+      limit,
+      totalPages: Math.ceil(totalResults / limit),
+      totalResults,
+      results: rows.map(({ images, total_count, ...product }) => {
+        const imageList = Array.isArray(images) ? images : [];
+
+        const imagePaths = imageList
+          .map((img) => img.image_path)
+          .filter(Boolean);
+
+        const thumbnailPaths = imageList
+          .map((img) => img.thumbnail_path)
+          .filter(Boolean);
+
+        return {
+          ...product,
+          images: imagePaths.length ? imagePaths : [fallbackImage],
+          thumbnails: thumbnailPaths.length ? thumbnailPaths : [fallbackImage],
+          primaryImage: imagePaths[0] || fallbackImage,
+          thumbnail: thumbnailPaths[0] || fallbackImage
+        };
+      })
+    });
+
+  } catch (err) {
+    console.error("Search error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Search failed",
+      ...(process.env.NODE_ENV === "development" && { details: err.message }),
+    });
+  }
+});
+
+
 router.get("/search", async (req, res) => {
   try {
     const searchQuery = req.query.query?.trim();
@@ -1640,6 +1767,8 @@ router.get("/search", async (req, res) => {
           p.brand->>'name' ILIKE '%' || $2 || '%' OR
           p.category->>'main' ILIKE '%' || $2 || '%' OR
           up.owner ILIKE '%' || $2 || '%' OR
+          up.city ILIKE '%' || $2 || '%' OR
+          up.address ILIKE '%' || $2 || '%' OR
           p.category->>'sub' ILIKE '%' || $2 || '%'
         )
       ORDER BY p.created_at DESC
