@@ -32,7 +32,6 @@ const productsRoutes = require("./jsFiles/products");
 const passwardResetRoutes = require("./jsFiles/passwardReset");
 const logsRoutes = require("./jsFiles/logs");
 const categoryRoutes = require("./jsFiles/category")
-const brandRoutes = require("./jsFiles/brands")
 const subCategoryRoutes = require("./jsFiles/subCategory")
 const ownerProductsRoutes = require("./jsFiles/ownerProduct")
 
@@ -91,7 +90,6 @@ app.use("/", productsRoutes);
 app.use("/", passwardResetRoutes);
 app.use("/", logsRoutes);
 app.use("/", categoryRoutes);
-app.use("/", brandRoutes)
 app.use("/", subCategoryRoutes)
 app.use("/", ownerProductsRoutes)
 

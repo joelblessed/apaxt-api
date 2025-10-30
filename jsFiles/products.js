@@ -7,7 +7,7 @@ const sharp = require("sharp");
 const { b2, authorize, getUploadDetails } = require("./b2");
 
 const jwt = require("jsonwebtoken");
-const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/logo.png" ;
+const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/logo.png";
 
 
 // Auth middleware
@@ -67,74 +67,74 @@ async function runTransaction(queries) {
 
 
 
-router.get("/allProducts", async (req, res) => {
-  try {
-    const language = req.query.lang || "en"; // Default language
+// router.get("/allProducts", async (req, res) => {
+//   try {
+//     const language = req.query.lang || "en"; // Default language
 
-    const { rows } = await query(
-      `
-      SELECT 
-        p.id,
-        p.brand,
-        p.category,
-        p.dimensions,
-        p.attributes,
-        p.created_at,
-        p.thumbnail_index,
-        pt.name,
-        pt.description,
+//     const { rows } = await query(
+//       `
+//       SELECT 
+//         p.id,
+//         p.brand,
+//         p.category,
+//         p.dimensions,
+//         p.attributes,
+//         p.created_at,
+//         p.thumbnail_index,
+//         pt.name,
+//         pt.description,
 
-        -- Include user-specific product rows as JSON array
-        json_agg(DISTINCT up.*) FILTER (WHERE up.id IS NOT NULL) AS user_products,
+//         -- Include user-specific product rows as JSON array
+//         json_agg(DISTINCT up.*) FILTER (WHERE up.id IS NOT NULL) AS user_products,
 
-        -- Include images with thumbnails as JSON array
-        json_agg(DISTINCT jsonb_build_object(
-          'image_path', pi.image_path,
-          'thumbnail_path', pi.thumbnail_path
-        )) FILTER (WHERE pi.image_path IS NOT NULL) AS images
+//         -- Include images with thumbnails as JSON array
+//         json_agg(DISTINCT jsonb_build_object(
+//           'image_path', pi.image_path,
+//           'thumbnail_path', pi.thumbnail_path
+//         )) FILTER (WHERE pi.image_path IS NOT NULL) AS images
 
-      FROM products p
-      JOIN product_translations pt 
-        ON p.id = pt.product_id AND pt.language_code = $1
-      LEFT JOIN user_products up 
-        ON p.id = up.product_id
-      LEFT JOIN product_images pi 
-        ON p.id = pi.product_id
+//       FROM products p
+//       JOIN product_translations pt 
+//         ON p.id = pt.product_id AND pt.language_code = $1
+//       LEFT JOIN user_products up 
+//         ON p.id = up.product_id
+//       LEFT JOIN product_images pi 
+//         ON p.id = pi.product_id
 
-      GROUP BY p.id, pt.name, pt.description
-      ORDER BY p.created_at DESC
-      `,
-      [language]
-    );
+//       GROUP BY p.id, pt.name, pt.description
+//       ORDER BY p.created_at DESC
+//       `,
+//       [language]
+//     );
 
 
-    res.json({
-      success: true,
-      totalResults: rows.length,
-      products: rows.map((product) => {
-        const imageObjects = product.images || [];
+//     res.json({
+//       success: true,
+//       totalResults: rows.length,
+//       products: rows.map((product) => {
+//         const imageObjects = product.images || [];
 
-        const images = imageObjects.map((img) => img.image_path);
-        const thumbnails = imageObjects.map((img) => img.thumbnail_path);
+//         const images = imageObjects.map((img) => img.image_path);
+//         const thumbnails = imageObjects.map((img) => img.thumbnail_path);
 
-        return {
-          ...product,
-          images: images.length ? images : [fallbackImage],
-          thumbnails: thumbnails.length ? thumbnails : [fallbackImage],
-          primaryImage: images[0] || fallbackImage,
-          thumbnail: thumbnails[0] || fallbackImage,
-        };
-      }),
-    });
-  } catch (err) {
-    console.error("Error fetching all products:", err);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch products",
-      details: process.env.NODE_ENV === "development" ? err.message : undefined,
-    });
-  }
-});
+//         return {
+//           ...product,
+//           images: images.length ? images : [fallbackImage],
+//           thumbnails: thumbnails.length ? thumbnails : [fallbackImage],
+//           primaryImage: images[0] || fallbackImage,
+//           thumbnail: thumbnails[0] || fallbackImage,
+//         };
+//       }),
+//     });
+//   } catch (err) {
+//     console.error("Error fetching all products:", err);
+//     res.status(500).json({
+//       success: false,
+//       error: "Failed to fetch products",
+//       details: process.env.NODE_ENV === "development" ? err.message : undefined,
+//     });
+//   }
+// });
 
 
 
@@ -360,378 +360,378 @@ router.get("/userProducts", async (req, res) => {
   }
 });
 
-router.get("/allUserProducts", async (req, res) => {
-  try {
-    const language = req.query.lang || "en";
-    const ownerId = req.query.owner_id;
+// router.get("/allUserProducts", async (req, res) => {
+//   try {
+//     const language = req.query.lang || "en";
+//     const ownerId = req.query.owner_id;
 
-    if (!ownerId) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing owner_id in query parameters",
-      });
-    }
+//     if (!ownerId) {
+//       return res.status(400).json({
+//         success: false,
+//         error: "Missing owner_id in query parameters",
+//       });
+//     }
 
 
-    const productsQuery = `
-      SELECT 
-        p.id,
-        p.brand,
-        p.category,
-        p.dimensions,
-        p.attributes,
-        p.created_at,
-        p.thumbnail_index,
-        pt.name,
-        pt.description,
-        (
-          SELECT jsonb_agg(jsonb_build_object(
-            'id', up.id,
-            'price', up.price,
-            'discount', up.discount,
-            'status', up.status,
-            'colors', up.colors,
-            'owner', up.owner,
-            'owner_id', up.owner_id,
-            'number_in_stock', up.number_in_stock,
-            'phone_number', up.phone_number,
-            'address', up.address,
-            'city', up.city
-          ))
-          FROM user_products up 
-          WHERE up.product_id = p.id AND up.owner_id = $2
-        ) AS user_products,
-        (
-          SELECT jsonb_agg(jsonb_build_object(
-            'image_path', pi.image_path,
-            'thumbnail_path', pi.thumbnail_path
-          ))
-          FROM product_images pi
-          WHERE pi.product_id = p.id
-        ) AS imagespath
-      FROM products p
-      JOIN product_translations pt 
-        ON p.id = pt.product_id AND pt.language_code = $1
-      WHERE EXISTS (
-        SELECT 1 FROM user_products up 
-        WHERE up.product_id = p.id AND up.owner_id = $2
-      )
-      ORDER BY p.created_at DESC
-    `;
+//     const productsQuery = `
+//       SELECT 
+//         p.id,
+//         p.brand,
+//         p.category,
+//         p.dimensions,
+//         p.attributes,
+//         p.created_at,
+//         p.thumbnail_index,
+//         pt.name,
+//         pt.description,
+//         (
+//           SELECT jsonb_agg(jsonb_build_object(
+//             'id', up.id,
+//             'price', up.price,
+//             'discount', up.discount,
+//             'status', up.status,
+//             'colors', up.colors,
+//             'owner', up.owner,
+//             'owner_id', up.owner_id,
+//             'number_in_stock', up.number_in_stock,
+//             'phone_number', up.phone_number,
+//             'address', up.address,
+//             'city', up.city
+//           ))
+//           FROM user_products up 
+//           WHERE up.product_id = p.id AND up.owner_id = $2
+//         ) AS user_products,
+//         (
+//           SELECT jsonb_agg(jsonb_build_object(
+//             'image_path', pi.image_path,
+//             'thumbnail_path', pi.thumbnail_path
+//           ))
+//           FROM product_images pi
+//           WHERE pi.product_id = p.id
+//         ) AS imagespath
+//       FROM products p
+//       JOIN product_translations pt 
+//         ON p.id = pt.product_id AND pt.language_code = $1
+//       WHERE EXISTS (
+//         SELECT 1 FROM user_products up 
+//         WHERE up.product_id = p.id AND up.owner_id = $2
+//       )
+//       ORDER BY p.created_at DESC
+//     `;
 
-    const productsResult = await query(productsQuery, [language, ownerId]);
+//     const productsResult = await query(productsQuery, [language, ownerId]);
 
-    const products = productsResult.rows.map((product) => {
-      const imageData = product.imagespath || [];
+//     const products = productsResult.rows.map((product) => {
+//       const imageData = product.imagespath || [];
 
-      const images = imageData.map(img => img.image_path).filter(Boolean);
-      const thumbnails = imageData.map(img => img.thumbnail_path).filter(Boolean);
+//       const images = imageData.map(img => img.image_path).filter(Boolean);
+//       const thumbnails = imageData.map(img => img.thumbnail_path).filter(Boolean);
 
-      return {
-        ...product,
-        images: images.length ? images : [fallbackImage],
-        thumbnails: thumbnails.length ? thumbnails : [fallbackImage],
-        primaryImage: images[0] || fallbackImage,
-        thumbnail: thumbnails[0] || fallbackImage,
-      };
-    });
+//       return {
+//         ...product,
+//         images: images.length ? images : [fallbackImage],
+//         thumbnails: thumbnails.length ? thumbnails : [fallbackImage],
+//         primaryImage: images[0] || fallbackImage,
+//         thumbnail: thumbnails[0] || fallbackImage,
+//       };
+//     });
 
-    res.json({
-      success: true,
-      products,
-      totalResults: products.length
-    });
+//     res.json({
+//       success: true,
+//       products,
+//       totalResults: products.length
+//     });
 
-  } catch (err) {
-    console.error("Error fetching products by owner_id:", err);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch products",
-      ...(process.env.NODE_ENV === "development" && { details: err.message }),
-    });
-  }
-});
+//   } catch (err) {
+//     console.error("Error fetching products by owner_id:", err);
+//     res.status(500).json({
+//       success: false,
+//       error: "Failed to fetch products",
+//       ...(process.env.NODE_ENV === "development" && { details: err.message }),
+//     });
+//   }
+// });
 
-router.get("/allUserProducts", async (req, res) => {
-  try {
-    const language = req.query.lang || "en";
-    const ownerId = req.query.owner_id;
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, parseInt(req.query.limit) || 1000);
-    const offset = (page - 1) * limit;
+// router.get("/allUserProducts", async (req, res) => {
+//   try {
+//     const language = req.query.lang || "en";
+//     const ownerId = req.query.owner_id;
+//     const page = Math.max(1, parseInt(req.query.page) || 1);
+//     const limit = Math.min(100, parseInt(req.query.limit) || 1000);
+//     const offset = (page - 1) * limit;
 
-    if (!ownerId) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing owner_id in query parameters",
-      });
-    }
+//     if (!ownerId) {
+//       return res.status(400).json({
+//         success: false,
+//         error: "Missing owner_id in query parameters",
+//       });
+//     }
 
-    const productsQuery = `
-      SELECT 
-        p.id,
-        p.brand,
-        p.category,
-        p.dimensions,
-        p.attributes,
-        p.created_at,
-        p.thumbnail_index,
-        pt.name,
-        pt.description,
-        (
-          SELECT jsonb_agg(jsonb_build_object(
-            'id', up.id,
-            'price', up.price,
-            'discount', up.discount,
-            'status', up.status,
-            'colors', up.colors,
-            'owner', up.owner,
-            'owner_id', up.owner_id,
-            'number_in_stock', up.number_in_stock,
-            'phone_number', up.phone_number,
-            'address', up.address,
-            'city', up.city
-          ))
-          FROM user_products up 
-          WHERE up.product_id = p.id AND up.owner_id = $2
-        ) AS user_products,
-        (
-          SELECT jsonb_agg(jsonb_build_object(
-            'image_path', pi.image_path,
-            'thumbnail_path', pi.thumbnail_path
-          ))
-          FROM product_images pi
-          WHERE pi.product_id = p.id
-        ) AS imagespath
-      FROM products p
-      JOIN product_translations pt 
-        ON p.id = pt.product_id AND pt.language_code = $1
-      WHERE EXISTS (
-        SELECT 1 FROM user_products up 
-        WHERE up.product_id = p.id AND up.owner_id = $2
-      )
-      ORDER BY p.created_at DESC
-      LIMIT $3 OFFSET $4
-    `;
+//     const productsQuery = `
+//       SELECT 
+//         p.id,
+//         p.brand,
+//         p.category,
+//         p.dimensions,
+//         p.attributes,
+//         p.created_at,
+//         p.thumbnail_index,
+//         pt.name,
+//         pt.description,
+//         (
+//           SELECT jsonb_agg(jsonb_build_object(
+//             'id', up.id,
+//             'price', up.price,
+//             'discount', up.discount,
+//             'status', up.status,
+//             'colors', up.colors,
+//             'owner', up.owner,
+//             'owner_id', up.owner_id,
+//             'number_in_stock', up.number_in_stock,
+//             'phone_number', up.phone_number,
+//             'address', up.address,
+//             'city', up.city
+//           ))
+//           FROM user_products up 
+//           WHERE up.product_id = p.id AND up.owner_id = $2
+//         ) AS user_products,
+//         (
+//           SELECT jsonb_agg(jsonb_build_object(
+//             'image_path', pi.image_path,
+//             'thumbnail_path', pi.thumbnail_path
+//           ))
+//           FROM product_images pi
+//           WHERE pi.product_id = p.id
+//         ) AS imagespath
+//       FROM products p
+//       JOIN product_translations pt 
+//         ON p.id = pt.product_id AND pt.language_code = $1
+//       WHERE EXISTS (
+//         SELECT 1 FROM user_products up 
+//         WHERE up.product_id = p.id AND up.owner_id = $2
+//       )
+//       ORDER BY p.created_at DESC
+//       LIMIT $3 OFFSET $4
+//     `;
 
-    const countQuery = `
-      SELECT COUNT(*) 
-      FROM products p
-      JOIN product_translations pt 
-        ON p.id = pt.product_id AND pt.language_code = $1
-      WHERE EXISTS (
-        SELECT 1 FROM user_products up 
-        WHERE up.product_id = p.id AND up.owner_id = $2
-      )
-    `;
+//     const countQuery = `
+//       SELECT COUNT(*) 
+//       FROM products p
+//       JOIN product_translations pt 
+//         ON p.id = pt.product_id AND pt.language_code = $1
+//       WHERE EXISTS (
+//         SELECT 1 FROM user_products up 
+//         WHERE up.product_id = p.id AND up.owner_id = $2
+//       )
+//     `;
 
-    const [productsResult, countResult] = await Promise.all([
-      query(productsQuery, [language, ownerId, limit, offset]),
-      query(countQuery, [language, ownerId]),
-    ]);
+//     const [productsResult, countResult] = await Promise.all([
+//       query(productsQuery, [language, ownerId, limit, offset]),
+//       query(countQuery, [language, ownerId]),
+//     ]);
 
-    const totalResults = parseInt(countResult.rows[0].count, 10);
-    const totalPages = Math.ceil(totalResults / limit);
+//     const totalResults = parseInt(countResult.rows[0].count, 10);
+//     const totalPages = Math.ceil(totalResults / limit);
 
-    const products = productsResult.rows.map((product) => {
-      const imageData = product.imagespath || [];
+//     const products = productsResult.rows.map((product) => {
+//       const imageData = product.imagespath || [];
 
-      const images = imageData.map(img => img.image_path).filter(Boolean);
-      const thumbnails = imageData.map(img => img.thumbnail_path).filter(Boolean);
+//       const images = imageData.map(img => img.image_path).filter(Boolean);
+//       const thumbnails = imageData.map(img => img.thumbnail_path).filter(Boolean);
 
-      return {
-        ...product,
-        images: images.length ? images : [fallbackImage],
-        thumbnails: thumbnails.length ? thumbnails : [fallbackImage],
-        primaryImage: images[0] || fallbackImage,
-        thumbnail: thumbnails[0] || fallbackImage,
-      };
-    });
+//       return {
+//         ...product,
+//         images: images.length ? images : [fallbackImage],
+//         thumbnails: thumbnails.length ? thumbnails : [fallbackImage],
+//         primaryImage: images[0] || fallbackImage,
+//         thumbnail: thumbnails[0] || fallbackImage,
+//       };
+//     });
 
-    res.json({
-      success: true,
-      pagination: {
-        currentPage: page,
-        totalPages,
-        totalResults,
-        resultsPerPage: limit,
-      },
-      products
-    });
+//     res.json({
+//       success: true,
+//       pagination: {
+//         currentPage: page,
+//         totalPages,
+//         totalResults,
+//         resultsPerPage: limit,
+//       },
+//       products
+//     });
 
-  } catch (err) {
-    console.error("Error fetching products by owner_id:", err);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch products",
-      ...(process.env.NODE_ENV === "development" && { details: err.message }),
-    });
-  }
-});
+//   } catch (err) {
+//     console.error("Error fetching products by owner_id:", err);
+//     res.status(500).json({
+//       success: false,
+//       error: "Failed to fetch products",
+//       ...(process.env.NODE_ENV === "development" && { details: err.message }),
+//     });
+//   }
+// });
 
 
 // // Get single product by ID
 
 
 
-router.get("/product/:id", async (req, res) => {
-  try {
-    const productId = req.params.id;
-    const language = req.query.lang || "en";
+// router.get("/product/:id", async (req, res) => {
+//   try {
+//     const productId = req.params.id;
+//     const language = req.query.lang || "en";
 
-    const queryText = `
-      SELECT 
-        p.id,
-        p.brand,
-        p.category,
-        p.dimensions,
-        p.attributes,
-        p.thumbnail_index,
-        p.created_at,
+//     const queryText = `
+//       SELECT 
+//         p.id,
+//         p.brand,
+//         p.category,
+//         p.dimensions,
+//         p.attributes,
+//         p.thumbnail_index,
+//         p.created_at,
 
-        -- Translation
-        (
-          SELECT row_to_json(pt)
-          FROM product_translations pt
-          WHERE pt.product_id = p.id AND pt.language_code = $2
-          LIMIT 1
-        ) AS current_translation,
+//         -- Translation
+//         (
+//           SELECT row_to_json(pt)
+//           FROM product_translations pt
+//           WHERE pt.product_id = p.id AND pt.language_code = $2
+//           LIMIT 1
+//         ) AS current_translation,
 
-        -- User products
-        (
-          SELECT json_agg(jsonb_build_object(
-            'id', up.id,
-            'price', up.price,
-            'discount', up.discount,
-            'status', up.status,
-            'colors', up.colors,
-            'owner', up.owner,
-            'number_in_stock', up.number_in_stock,
-            'phone_number', up.phone_number,
-            'address', up.address,
-            'city', up.city
-          ))
-          FROM user_products up
-          WHERE up.product_id = p.id
-        ) AS user_products,
+//         -- User products
+//         (
+//           SELECT json_agg(jsonb_build_object(
+//             'id', up.id,
+//             'price', up.price,
+//             'discount', up.discount,
+//             'status', up.status,
+//             'colors', up.colors,
+//             'owner', up.owner,
+//             'number_in_stock', up.number_in_stock,
+//             'phone_number', up.phone_number,
+//             'address', up.address,
+//             'city', up.city
+//           ))
+//           FROM user_products up
+//           WHERE up.product_id = p.id
+//         ) AS user_products,
 
-        -- Product images
-        (
-          SELECT json_agg(jsonb_build_object(
-            'image_path', pi.image_path,
-            'thumbnail_path', pi.thumbnail_path
-          ))
-          FROM product_images pi
-          WHERE pi.product_id = p.id
-        ) AS images_data
+//         -- Product images
+//         (
+//           SELECT json_agg(jsonb_build_object(
+//             'image_path', pi.image_path,
+//             'thumbnail_path', pi.thumbnail_path
+//           ))
+//           FROM product_images pi
+//           WHERE pi.product_id = p.id
+//         ) AS images_data
 
-      FROM products p
-      WHERE p.id = $1
-      LIMIT 1
-    `;
+//       FROM products p
+//       WHERE p.id = $1
+//       LIMIT 1
+//     `;
 
-    const { rows } = await query(queryText, [productId, language]);
+//     const { rows } = await query(queryText, [productId, language]);
 
-    if (rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Product not found" });
-    }
+//     if (rows.length === 0) {
+//       return res.status(404).json({ success: false, message: "Product not found" });
+//     }
 
-    const product = rows[0];
-    const imageData = product.images_data || [];
+//     const product = rows[0];
+//     const imageData = product.images_data || [];
 
-    const images = imageData.map(img => img.image_path).filter(Boolean);
-    const thumbnails = imageData.map(img => img.thumbnail_path).filter(Boolean);
+//     const images = imageData.map(img => img.image_path).filter(Boolean);
+//     const thumbnails = imageData.map(img => img.thumbnail_path).filter(Boolean);
 
-    res.json({
-      success: true,
-      product: {
-        id: product.id,
-        brand: product.brand,
-        category: product.category,
-        dimensions: product.dimensions,
-        attributes: product.attributes,
-        created_at: product.created_at,
-        current_translation: product.current_translation || null,
-        user_products: product.user_products || [],
-        images: images.length ? images : [fallbackImage],
-        thumbnails: thumbnails.length ? thumbnails : [fallbackImage],
-        primaryImage: images[0] || fallbackImage,
-        thumbnail: thumbnails[0] || fallbackImage
-      }
-    });
+//     res.json({
+//       success: true,
+//       product: {
+//         id: product.id,
+//         brand: product.brand,
+//         category: product.category,
+//         dimensions: product.dimensions,
+//         attributes: product.attributes,
+//         created_at: product.created_at,
+//         current_translation: product.current_translation || null,
+//         user_products: product.user_products || [],
+//         images: images.length ? images : [fallbackImage],
+//         thumbnails: thumbnails.length ? thumbnails : [fallbackImage],
+//         primaryImage: images[0] || fallbackImage,
+//         thumbnail: thumbnails[0] || fallbackImage
+//       }
+//     });
 
-  } catch (err) {
-    console.error("Error fetching product:", err);
-    res.status(500).json({ success: false, error: "Server error" });
-  }
-});
+//   } catch (err) {
+//     console.error("Error fetching product:", err);
+//     res.status(500).json({ success: false, error: "Server error" });
+//   }
+// });
 
 
 
 
 //// Get single product by ID all Languages
-router.get("/productPrev/:productId/:userId", async (req, res) => {
-  try {
-    const { productId, userId } = req.params;
+// router.get("/productPrev/:productId/:userId", async (req, res) => {
+//   try {
+//     const { productId, userId } = req.params;
 
-    const { rows } = await query(
-      `
-      SELECT 
-        p.*,
+//     const { rows } = await query(
+//       `
+//       SELECT 
+//         p.*,
 
-        -- All translations
-        (
-          SELECT json_agg(json_build_object(
-            'language_code', pt.language_code,
-            'name', pt.name,
-            'description', pt.description
-          ))
-          FROM product_translations pt 
-          WHERE pt.product_id = p.id
-        ) AS translations,
+//         -- All translations
+//         (
+//           SELECT json_agg(json_build_object(
+//             'language_code', pt.language_code,
+//             'name', pt.name,
+//             'description', pt.description
+//           ))
+//           FROM product_translations pt 
+//           WHERE pt.product_id = p.id
+//         ) AS translations,
 
-        -- Filter user_products by owner_id
-        (
-          SELECT json_agg(up)
-          FROM user_products up
-          WHERE up.product_id = p.id AND up.owner_id = $2
-        ) AS user_products,
+//         -- Filter user_products by owner_id
+//         (
+//           SELECT json_agg(up)
+//           FROM user_products up
+//           WHERE up.product_id = p.id AND up.owner_id = $2
+//         ) AS user_products,
 
-        -- Images
-        array_agg(DISTINCT pi.image_path) FILTER (WHERE pi.image_path IS NOT NULL) AS images,
-        array_agg(DISTINCT pi.thumbnail_path) FILTER (WHERE pi.thumbnail_path IS NOT NULL) AS thumbnails
+//         -- Images
+//         array_agg(DISTINCT pi.image_path) FILTER (WHERE pi.image_path IS NOT NULL) AS images,
+//         array_agg(DISTINCT pi.thumbnail_path) FILTER (WHERE pi.thumbnail_path IS NOT NULL) AS thumbnails
 
-      FROM products p
-      LEFT JOIN product_images pi ON p.id = pi.product_id
-      WHERE p.id = $1
-      GROUP BY p.id
-      `,
-      [productId, userId]
-    );
+//       FROM products p
+//       LEFT JOIN product_images pi ON p.id = pi.product_id
+//       WHERE p.id = $1
+//       GROUP BY p.id
+//       `,
+//       [productId, userId]
+//     );
 
-    if (rows.length === 0) {
-      return res.status(404).json({ success: false, message: "Product not found" });
-    }
+//     if (rows.length === 0) {
+//       return res.status(404).json({ success: false, message: "Product not found" });
+//     }
 
-    const product = rows[0];
-    const language = req.query.lang || "en";
+//     const product = rows[0];
+//     const language = req.query.lang || "en";
 
-    const currentTranslation = product.translations?.find(
-      (t) => t.language_code === language
-    ) || null;
+//     const currentTranslation = product.translations?.find(
+//       (t) => t.language_code === language
+//     ) || null;
 
-    res.json({
-      success: true,
-      product: {
-        ...product,
-        current_translation: currentTranslation
-      }
-    });
-  } catch (err) {
-    console.error("Error fetching product:", err);
-    res.status(500).json({ success: false, error: "Server error" });
-  }
-});
+//     res.json({
+//       success: true,
+//       product: {
+//         ...product,
+//         current_translation: currentTranslation
+//       }
+//     });
+//   } catch (err) {
+//     console.error("Error fetching product:", err);
+//     res.status(500).json({ success: false, error: "Server error" });
+//   }
+// });
 
 
 // Create new product with images
@@ -1355,78 +1355,78 @@ router.put("/adminEdit/:id/:user_id", upload.array("images"), async (req, res) =
 });
 
 
-// PUT /user-product/:product_id/:owner_id
-router.put("/user-product/:product_id/:owner_id", async (req, res) => {
-  const { product_id, owner_id } = req.params;
-  const {
-    price,
-    number_in_stock,
-    discount,
-    phone_number,
-    status,
-    address,
-    city,
-    colors,
-  } = req.body;
+// // PUT /user-product/:product_id/:owner_id
+// router.put("/user-product/:product_id/:owner_id", async (req, res) => {
+//   const { product_id, owner_id } = req.params;
+//   const {
+//     price,
+//     number_in_stock,
+//     discount,
+//     phone_number,
+//     status,
+//     address,
+//     city,
+//     colors,
+//   } = req.body;
 
-  try {
-    // Check ownership
-    const ownershipCheck = await query(
-      `SELECT * FROM user_products WHERE product_id = $1 AND owner_id = $2`,
-      [product_id, owner_id]
-    );
+//   try {
+//     // Check ownership
+//     const ownershipCheck = await query(
+//       `SELECT * FROM user_products WHERE product_id = $1 AND owner_id = $2`,
+//       [product_id, owner_id]
+//     );
 
-    if (ownershipCheck.rows.length === 0) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized: You do not own this product.",
-      });
-    }
+//     if (ownershipCheck.rows.length === 0) {
+//       return res.status(403).json({
+//         success: false,
+//         message: "Unauthorized: You do not own this product.",
+//       });
+//     }
 
-    // Perform the update
-    const updateResult = await query(
-      `
-      UPDATE user_products
-      SET
-        price = COALESCE($1, price),
-        number_in_stock = COALESCE($2, number_in_stock),
-        discount = COALESCE($3, discount),
-        phone_number = COALESCE($4, phone_number),
-        status = COALESCE($5, status),
-        address = COALESCE($6, address),
-        city = COALESCE($7, city),
-        colors = COALESCE($8, colors)
-      WHERE product_id = $9 AND owner_id = $10
-      RETURNING *
-    `,
-      [
-        price,
-        number_in_stock,
-        discount,
-        phone_number,
-        status,
-        address,
-        city,
-        colors ? colors : null,
-        product_id,
-        owner_id,
-      ]
-    );
+//     // Perform the update
+//     const updateResult = await query(
+//       `
+//       UPDATE user_products
+//       SET
+//         price = COALESCE($1, price),
+//         number_in_stock = COALESCE($2, number_in_stock),
+//         discount = COALESCE($3, discount),
+//         phone_number = COALESCE($4, phone_number),
+//         status = COALESCE($5, status),
+//         address = COALESCE($6, address),
+//         city = COALESCE($7, city),
+//         colors = COALESCE($8, colors)
+//       WHERE product_id = $9 AND owner_id = $10
+//       RETURNING *
+//     `,
+//       [
+//         price,
+//         number_in_stock,
+//         discount,
+//         phone_number,
+//         status,
+//         address,
+//         city,
+//         colors ? colors : null,
+//         product_id,
+//         owner_id,
+//       ]
+//     );
 
-    res.json({
-      success: true,
-      message: "User product updated successfully.",
-      data: updateResult.rows[0],
-    });
-  } catch (error) {
-    console.error("Error updating user product:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update user product.",
-      error: error.message,
-    });
-  }
-});
+//     res.json({
+//       success: true,
+//       message: "User product updated successfully.",
+//       data: updateResult.rows[0],
+//     });
+//   } catch (error) {
+//     console.error("Error updating user product:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to update user product.",
+//       error: error.message,
+//     });
+//   }
+// });
 
 
 // Delete a user's reference to a product, and delete the product completely if no other user is referencing it
@@ -1580,88 +1580,93 @@ router.get("/categories", async (req, res) => {
     const searchQuery = req.query.query?.trim();
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 100);
-    const di1 = req.query.di1;
-    const di2 = req.query.di2;
-    const di3 = req.query.di3;
+    const di1 = req.query.di1 && req.query.di1 !== "undefined" ? req.query.di1 : null;
+    const di2 = req.query.di2 && req.query.di2 !== "undefined" ? req.query.di2 : null;
+    const di3 = req.query.di3 && req.query.di3 !== "undefined" ? req.query.di3 : null;
 
-
-   
-    const offset = (page - 1) * limit;
     const language = req.query.lang || 'en';
 
-    if (!searchQuery || searchQuery.length < 2) {
-      return res.status(400).json({
-        success: false,
-        message: "Search query must be at least 2 characters"
-      });
-    }
+    const offset = (page - 1) * limit;
+
+    let filterConstraints = "";
+    let params = [language, searchQuery, limit, offset];
+
+    if (di1 && di2 && di3) {
+      filterConstraints = `p.${di1}->>'${di2}' ILIKE '%' || $2 || '%'`;
+      params.push(di3);
+    } else if (di1 && di2) {
+      filterConstraints = `p.${di1}->>'${di2}' ILIKE '%' || $2 || '%'`;
+    } else {
+      filterConstraints = `
+    (
     
-let filterConstraints = '';
-let params = [language, searchQuery, limit, offset]; // default order: $1..$4
 
-if (di3) {
-  // Add UUID as the LAST parameter, not before limit/offset
-  filterConstraints = `
-    p.${di1}->>'${di2}' ILIKE '%' || $2 || '%'
-    AND up.owner_id = $5
+           pt.name ILIKE '%' || $2 || '%' OR
+          pt.description ILIKE '%' || $2 || '%' OR
+          p.brand->>'name' ILIKE '%' || $2 || '%' OR
+          p.category->>'main' ILIKE '%' || $2 || '%' OR
+          up.owner ILIKE '%' || $2 || '%' OR
+          up.city ILIKE '%' || $2 || '%' OR
+          up.address ILIKE '%' || $2 || '%' OR
+          p.category->>'sub' ILIKE '%' || $2 || '%'
+    )
   `;
-  params = [language, searchQuery, limit, offset, di3]; // owner_id is now $5
-} else {
-  filterConstraints = `p.${di1}->>'${di2}' ILIKE '%' || $2 || '%'`;
-}
+      if (di3) params.push(di3);
+    }
 
-const queryText = `
-  SELECT 
-    p.id,
-    p.brand,
-    p.category,
-    p.dimensions,
-    p.attributes,
-    p.thumbnail_index,
-    p.created_at,
-    pt.name,
-    pt.description,
 
-    (
-      SELECT jsonb_agg(jsonb_build_object(
-        'id', up.id,
-        'price', up.price,
-        'discount', up.discount,
-        'status', up.status,
-        'colors', up.colors,
-        'owner', up.owner,
-        'number_in_stock', up.number_in_stock,
-        'phone_number', up.phone_number,
-        'address', up.address,
-        'city', up.city
-      ))
-      FROM user_products up
-      WHERE up.product_id = p.id
-    ) AS user_products,
+    const ownerFilter = di3 ? `AND up.owner_id = $${params.length}` : '';
 
-    (
-      SELECT jsonb_agg(jsonb_build_object(
-        'image_path', pi.image_path,
-        'thumbnail_path', pi.thumbnail_path
-      ))
-      FROM product_images pi
-      WHERE pi.product_id = p.id
-    ) AS images,
+    const queryText = `
+      SELECT 
+        p.id,
+        p.brand,
+        p.category,
+        p.dimensions,
+        p.attributes,
+        p.thumbnail_index,
+        p.created_at,
+        pt.name,
+        pt.description,
+        (
+          SELECT jsonb_agg(jsonb_build_object(
+            'id', up.id,
+            'price', up.price,
+            'discount', up.discount,
+            'status', up.status,
+            'colors', up.colors,
+            'owner', up.owner,
+            'number_in_stock', up.number_in_stock,
+            'phone_number', up.phone_number,
+            'address', up.address,
+            'city', up.city
+          ))
+          FROM user_products up
+          WHERE up.product_id = p.id
+        ) AS user_products,
+        (
+          SELECT jsonb_agg(jsonb_build_object(
+            'image_path', pi.image_path,
+            'thumbnail_path', pi.thumbnail_path
+          ))
+          FROM product_images pi
+          WHERE pi.product_id = p.id
+        ) AS images,
+        COUNT(*) OVER() AS total_count
+      FROM products p
+      JOIN product_translations pt ON p.id = pt.product_id
+      JOIN user_products up ON p.id = up.product_id
+      WHERE pt.language_code = $1
+        AND (${filterConstraints})
+        ${ownerFilter}
+      ORDER BY p.created_at DESC
+      LIMIT $3 OFFSET $4
+    `;
 
-    COUNT(*) OVER() AS total_count
-
-  FROM products p
-  JOIN product_translations pt ON p.id = pt.product_id
-  JOIN user_products up ON p.id = up.product_id
-  WHERE pt.language_code = $1
-    AND (${filterConstraints})
-  ORDER BY p.created_at DESC
-  LIMIT $3 OFFSET $4
-`;
-
-const { rows } = await query(queryText, params);
+    const { rows } = await query(queryText, params);
 
     const totalResults = rows[0]?.total_count || 0;
+    const fallbackImage = "https://yourcdn.com/default.jpg";
 
     res.json({
       success: true,
@@ -1672,25 +1677,18 @@ const { rows } = await query(queryText, params);
       totalResults,
       results: rows.map(({ images, total_count, ...product }) => {
         const imageList = Array.isArray(images) ? images : [];
-
-        const imagePaths = imageList
-          .map((img) => img.image_path)
-          .filter(Boolean);
-
-        const thumbnailPaths = imageList
-          .map((img) => img.thumbnail_path)
-          .filter(Boolean);
+        const imagePaths = imageList.map(img => img.image_path).filter(Boolean);
+        const thumbnailPaths = imageList.map(img => img.thumbnail_path).filter(Boolean);
 
         return {
           ...product,
           images: imagePaths.length ? imagePaths : [fallbackImage],
           thumbnails: thumbnailPaths.length ? thumbnailPaths : [fallbackImage],
           primaryImage: imagePaths[0] || fallbackImage,
-          thumbnail: thumbnailPaths[0] || fallbackImage
+          thumbnail: thumbnailPaths[0] || fallbackImage,
         };
-      })
+      }),
     });
-
   } catch (err) {
     console.error("Search error:", err);
     res.status(500).json({
@@ -1702,6 +1700,7 @@ const { rows } = await query(queryText, params);
 });
 
 
+
 router.get("/search", async (req, res) => {
   try {
     const searchQuery = req.query.query?.trim();
@@ -1710,12 +1709,6 @@ router.get("/search", async (req, res) => {
     const offset = (page - 1) * limit;
     const language = req.query.lang || 'en';
 
-    if (!searchQuery || searchQuery.length < 2) {
-      return res.status(400).json({
-        success: false,
-        message: "Search query must be at least 2 characters"
-      });
-    }
 
     const { rows } = await query(`
       SELECT 

@@ -14,13 +14,13 @@ function authenticateToken(req, res, next) {
 
   jwt.verify(token, process.env.JWT_SECRET
     , (err, user) => {
-    if (err) {
-      console.error("Token verification failed:", err);
-      return res.status(403).json({ error: "Invalid token" });
-    }
-    req.user = user;
-    next();
-  });
+      if (err) {
+        console.error("Token verification failed:", err);
+        return res.status(403).json({ error: "Invalid token" });
+      }
+      req.user = user;
+      next();
+    });
 }
 
 router.get("/catlader", async (req, res) => {
@@ -29,14 +29,16 @@ router.get("/catlader", async (req, res) => {
 
     // Fetch only the main fields needed for grouping
     const queryText = `
-      SELECT 
-        p.category_main,
-        p.category_sub,
-        p.brand->>'name' AS brand_name
-      FROM products p
-      JOIN product_translations pt 
-        ON p.id = pt.product_id AND pt.language_code = $1
-      ORDER BY p.category_main ASC
+     SELECT 
+  p.category->>'main' AS category_main,
+  p.category->>'sub' AS category_sub,
+  p.brand->>'name' AS brand_name
+FROM products p
+JOIN product_translations pt 
+  ON p.id = pt.product_id 
+  AND pt.language_code = $1
+ORDER BY p.category->>'main' ASC;
+
     `;
 
     const { rows } = await query(queryText, [language]);
@@ -166,7 +168,7 @@ router.get("/category", async (req, res) => {
     // ✅ Format and clean image data
     const categories = rows.map((category) => ({
       category_main: category.category_main,
-     products: (category.products || []).map((product) => {
+      products: (category.products || []).map((product) => {
         const imagesData = product.images || [];
         const images = imagesData.map((i) => i.image_path).filter(Boolean);
         const thumbnails = imagesData.map((i) => i.thumbnail_path).filter(Boolean);

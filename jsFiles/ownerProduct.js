@@ -31,8 +31,8 @@ router.get("/sellerCatLader", async (req, res) => {
         // Fetch only the main fields needed for grouping
         const queryText = `
   SELECT 
-    p.category_main,
-    p.category_sub,
+    p.category->>'main' AS category_main,
+    p.category->>'sub' AS category_sub,
     p.brand->>'name' AS brand_name,
     up.owner,
     up.owner_id
