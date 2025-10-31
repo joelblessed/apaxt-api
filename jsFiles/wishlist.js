@@ -4,9 +4,9 @@ const router = express.Router();
 const fallbackImage = "https://f004.backblazeb2.com/file/apaxt-images/products/logo.png";
 // POST /wishlist/item
 router.post('/wishlist/item', async (req, res) => {
-  const { user_id, session_id, product_id } = req.body;
+  const { userId, sessionId, productId, stockIndex } = req.body;
 
-  if (!product_id || (!user_id && !session_id)) {
+  if (!productId || (!userId && !sessionId)) {
     return res.status(400).json({ message: 'Missing required fields' });
   }
 
@@ -17,22 +17,12 @@ router.post('/wishlist/item', async (req, res) => {
  
 
     
-    if (user_id && session_id) {
+    if (userId || sessionId) {
       wishlistResult = await query(
         'SELECT id FROM wishlists WHERE user_id = $1 OR session_id = $2',
-        [user_id, session_id]
+        [userId, sessionId]
       );
 
-    } else if (user_id) {
-      wishlistResult = await query(
-        'SELECT id FROM wishlists WHERE user_id = $1',
-        [user_id]
-      );
-    } else {
-      wishlistResult = await query(
-        'SELECT id FROM wishlists WHERE session_id = $1',
-        [session_id]
-      );
     }
     
     let wishlistId;
@@ -44,19 +34,19 @@ router.post('/wishlist/item', async (req, res) => {
     } else {
       const insertWishlist = await query(
         'INSERT INTO wishlists (user_id, session_id) VALUES ($1, $2) RETURNING id',
-        [user_id || null, session_id || null]
+        [userId || null, sessionId || null]
       );
       wishlistId = insertWishlist.rows[0].id;
     }
 
     // Step 3: Insert item into wishlist_items (prevent duplicates)
     const insertItem = await query(
-      `INSERT INTO wishlist_items (wishlist_id, product_id)
-       VALUES ($1, $2)
-       ON CONFLICT (wishlist_id, product_id)
+      `INSERT INTO wishlist_items (wishlist_id, product_id, stock_index)
+       VALUES ($1, $2 ,$3)
+       ON CONFLICT (wishlist_id, product_id, stock_index)
        DO NOTHING
        RETURNING *`,
-      [wishlistId, product_id]
+      [wishlistId, productId, stockIndex]
     );
 
     if (insertItem.rows.length === 0) {
@@ -126,17 +116,17 @@ router.post('/wishlist/item', async (req, res) => {
 
 
 router.post("/removeFromWishlist", async (req, res) => {
-  const { productId, userId } = req.body;
+  const { productId, userId, sessionId, stockIndex } = req.body;
 
   if (!productId) return res.status(400).json({ message: "Product ID is required" });
 
   try {
-    const wishlist = await query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
+    const wishlist = await query("SELECT * FROM wishlists WHERE user_id = $1 OR session_id =$2", [userId, sessionId]);
     if (wishlist.rowCount === 0) return res.json({ message: "Wishlist is empty" });
 
     await query(
-      "DELETE FROM wishlist_items WHERE wishlist_id = $1 AND product_id = $2",
-      [wishlist.rows[0].id, productId]
+      "DELETE FROM wishlist_items WHERE wishlist_id = $1 AND product_id = $2 AND stock_index =$3",
+      [wishlist.rows[0].id, productId, stockIndex]
     );
 
     res.json({ message: "Product removed from wishlist successfully" });
@@ -148,12 +138,12 @@ router.post("/removeFromWishlist", async (req, res) => {
 
 
 router.get("/wishlist/:userId", async (req, res) => {
-  const { userId } = req.params;
+  const { userId} = req.params;
   const { lang = "en" } = req.query; // optional language code for translation
 
   try {
     // 1️⃣ Get wishlist ID for this user    
-    const wishlist = await query("SELECT id FROM wishlists WHERE user_id = $1", [userId]);
+    const wishlist = await query("SELECT id FROM wishlists WHERE user_id = $1 OR session_id = $2", [userId, userId]);
     if (wishlist.rowCount === 0) return res.json([]);
 
     // 2️⃣ Get all product IDs from the wishlist
@@ -245,7 +235,7 @@ router.get("/wishlistArray/:userId", async (req, res) => {
   const { userId } = req.params;
 
   try {
-    const wishlist = await query("SELECT * FROM wishlists WHERE user_id = $1", [userId]);
+    const wishlist = await query("SELECT * FROM wishlists WHERE user_id = $1 OR session_id =$2", [userId, userId]);
 
     if (wishlist.rowCount === 0) return res.json([]);
 

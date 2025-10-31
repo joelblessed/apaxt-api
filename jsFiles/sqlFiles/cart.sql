@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS cart_items (
     product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
     quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (cart_id, product_id) -- Prevent duplicate products in cart
+    UNIQUE (cart_id, user_product_id, stock_index) -- Prevent duplicate products in cart
 );
 
 -- Create indexes for better performance
@@ -67,5 +67,5 @@ CREATE TABLE cart_items (
   discount_at_added DECIMAL(10,2) DEFAULT 0,
   metadata JSONB, -- Optional metadata for the item
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(cart_id, user_product_id)
+  UNIQUE(cart_id, user_product_id,stock_index)
 );

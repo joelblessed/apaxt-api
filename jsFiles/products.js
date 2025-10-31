@@ -161,6 +161,7 @@ router.get("/products", async (req, res) => {
         (
           SELECT jsonb_agg(jsonb_build_object(
             'id', up.id,
+            'product_id',up.product_id,
             'price', up.price,
             'discount', up.discount,
             'status', up.status,
@@ -1577,7 +1578,11 @@ router.delete("/delete/:productId/user/:userId", async (req, res) => {
 // // Search products with translations
 router.get("/categories", async (req, res) => {
   try {
-    const searchQuery = req.query.query?.trim();
+    const queryParam = req.query.query;
+const searchQuery = decodeURIComponent(queryParam || "").trim();
+
+// Now searchTerm = "Savana"
+
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 100);
     const di1 = req.query.di1 && req.query.di1 !== "undefined" ? req.query.di1 : null;
@@ -1596,7 +1601,9 @@ router.get("/categories", async (req, res) => {
       params.push(di3);
     } else if (di1 && di2) {
       filterConstraints = `p.${di1}->>'${di2}' ILIKE '%' || $2 || '%'`;
+
     } else {
+
       filterConstraints = `
     (
     
@@ -1631,6 +1638,7 @@ router.get("/categories", async (req, res) => {
         (
           SELECT jsonb_agg(jsonb_build_object(
             'id', up.id,
+            'product_id',up.product_id,
             'price', up.price,
             'discount', up.discount,
             'status', up.status,
@@ -1726,6 +1734,7 @@ router.get("/search", async (req, res) => {
           SELECT jsonb_agg(jsonb_build_object(
             'id', up.id,
             'price', up.price,
+            'product_id',up.product_id,
             'discount', up.discount,
             'status', up.status,
             'colors', up.colors,
@@ -1811,7 +1820,9 @@ router.get("/search", async (req, res) => {
 
 router.get("/ownerSearch", async (req, res) => {
   try {
-    const searchQuery = req.query.query?.trim();
+       const queryParam = req.query.query;
+const searchQuery = decodeURIComponent(queryParam || "").trim();
+    
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 100);
     const offset = (page - 1) * limit;
@@ -1848,6 +1859,7 @@ router.get("/ownerSearch", async (req, res) => {
         (
           SELECT jsonb_agg(jsonb_build_object(
             'id', up2.id,
+            'product_id',up2.product_id,
             'price', up2.price,
             'discount', up2.discount,
             'status', up2.status,

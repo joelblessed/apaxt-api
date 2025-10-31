@@ -36,13 +36,17 @@ CREATE INDEX idx_product_images ON product_images(product_id);
 
 
 
-ALTER TABLE products
-ADD COLUMN posted_on TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+ALTER TABLE wishlist_items(
+ADD COLUMN stock_index INTEGER REFERENCES user_products(id) ON DELETE CASCADE,
+  ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  ADD CONSTRAINT unique_wishlist_product_stock_id UNIQUE (wishlist_id, product_id, stock_index);
+  )
 
 
 
 
-
+ALTER TABLE cart_items
+ADD CONSTRAINT unique_cart_user_product_stock_id UNIQUE (cart_id, user_product_id, stock_index);
 
 
 

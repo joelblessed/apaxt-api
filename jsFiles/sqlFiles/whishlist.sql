@@ -21,5 +21,7 @@ CREATE TABLE wishlist_items (
   id SERIAL PRIMARY KEY,
   wishlist_id INTEGER REFERENCES wishlists(id) ON DELETE CASCADE,
   product_id INTEGER REFERENCES products(id),
-  UNIQUE(wishlist_id, product_id)
+stock_index INTEGER REFERENCES user_products(id) ON DELETE CASCADE,
+ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+UNIQUE (wishlist_id, product_id, stock_index)
 );
